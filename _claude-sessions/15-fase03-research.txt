@@ -1,0 +1,1897 @@
+ ▐▛███▛█   Claude Code v2.1.329
+▝▜██████▀  Opus 5.5 · Claude Pro
+ ▝▝   ▝▝   ~/mbaengsoft/mba-ia-streamTube-greenfield
+
+
+! git branch --show-current                                                     
+  ⎿  feature/phase-03-videos
+
+● You're on feature/phase-03-videos. It already has dev merged in, which brought
+  in the lint/migration fixes from PR #1. One file isn't tracked yet:
+  _claude-sessions/14-baseline-fix-lint-migrations.txt.
+
+  What should I work on next on this branch?
+
+✻ Crunched for 3s · done 11:19 AM
+
+❯ Antes de iniciar a Fase 03 (Upload e Processamento de Vídeos), quero alinhar  
+  convenções.                                                                   
+                                                                                
+  Dado o que existe em @.claude/skills/plan-pipeline/SKILL.md (seções "Mode     
+  detection" e "Slug discovery") e @.claude/skills/research/SKILL.md (seção de  
+  output/filename), avalie como a pipeline deriva o nome do arquivo de decisões 
+  e o diretório da fase a partir do slug.                                       
+                                                                                
+  O desafio do MBA exige exatamente estes caminhos:                             
+  - docs/decisions/technical-decisions-phase-03-videos.md                       
+  - docs/phases/phase-03-videos/ (com context.md, validation.md,                
+  library-refs.md, phase-03-videos.md, progress.md)                             
+                                                                                
+  Compare com o precedente da Fase 02                                           
+  (docs/decisions/technical-decisions-phase-02-auth.md +                        
+  docs/phases/phase-02-auth/) e me diga:                                        
+  1. Se usar o slug "phase-03-videos", qual diretório a pipeline geraria?       
+  2. Qual a forma de obter exatamente os caminhos exigidos sem alterar as       
+  skills (mudar skill está fora do escopo da fase)?                             
+  3. Quais argumentos devo passar em cada comando (/research, /plan-context,    
+  /plan-validate, /plan-resolve, /plan-build, /implement).                      
+                                                                                
+  Contexto operacional para as próximas etapas: os testes de integração         
+  compartilham o banco e devem rodar sempre com npm test -- --runInBand, com o  
+  start:dev parado.                                                             
+                                                                                
+  Não crie nem altere nenhum arquivo — apenas analise e me responda.            
+  ⎿  Read .claude/skills/plan-pipeline/SKILL.md (356 lines)
+  ⎿  Read .claude/skills/research/SKILL.md (434 lines)
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+● Não criei nem alterei nenhum arquivo. Resumo: nenhuma leitura literal das 
+  skills chega aos dois caminhos exigidos ao mesmo tempo. O precedente da Fase
+  02 contornou isso, e dá para repetir o contorno sem mexer nas skills.
+
+  Como a pipeline deriva os caminhos
+
+  Origem: research/SKILL.md (Output)
+  Regra literal: docs/decisions/technical-decisions-{slug}.md. O slug deve ser
+    descritivo e "No phase number … in the filename" (exemplo:
+    technical-decisions-auth.md).
+  ────────────────────────────────────────
+  Origem: plan-pipeline (Slug discovery) e plan-context, plan-validate,
+    plan-resolve, plan-build
+  Regra literal: O diretório é docs/phases/phase-NN-{slug}/, com NN vindo de
+    related_phases[0]. O artefato final é phase-NN-{slug}.md.
+
+  Isso cria um conflito para o desafio:
+  - Slug videos: o diretório fica phase-03-videos/ ✅, mas o arquivo vira
+    technical-decisions-videos.md ❌.
+  - Slug phase-03-videos: o arquivo fica certo ✅, mas o diretório literal vira
+    phase-03-phase-03-videos/ ❌.
+
+  O precedente da Fase 02 já tem esse conflito. Existem
+  technical-decisions-phase-02-auth.md e
+  technical-decisions-phase-02-auth-frontend.md (os dois com scope_type: phase,
+  related_phases: [2]). Pelas regras literais, os diretórios seriam
+  phase-02-phase-02-auth/. Mas os diretórios reais são
+  docs/phases/phase-02-auth/ e docs/phases/phase-02-auth-frontend/, com name: 
+  phase-02-auth no frontmatter. Na prática, o prefixo phase-NN- foi tratado como
+  já incluído no slug e não foi repetido. Essa regra não está escrita em
+  nenhuma skill.
+
+  1. Com o slug phase-03-videos, qual diretório a pipeline geraria?
+
+  - Pelas regras literais: docs/phases/phase-03-phase-03-videos/, com o artefato
+    phase-03-phase-03-videos.md.
+  - Seguindo o precedente da Fase 02: docs/phases/phase-03-videos/. Mas isso
+    depende de quem executa a skill repetir esse comportamento, e nada no texto
+    garante isso.
+
+  2. Como obter exatamente os caminhos exigidos sem alterar as skills
+
+  Use o slug phase-03-videos, como na Fase 02, e diga explicitamente em cada 
+  comando que o prefixo já está no slug. Pontos de atenção:
+
+  1. /research: por padrão ela geraria technical-decisions-videos.md. Peça o
+     nome do arquivo explicitamente. O frontmatter deve ter scope_type: phase e
+     related_phases: [3] (o inteiro 3, sem zero à esquerda, igual ao [2] da
+     Fase 02).
+  2. Etapas de planejamento: dê o diretório de destino explícito
+     (docs/phases/phase-03-videos/) e o name: phase-03-videos. Assim o mkdir -p
+     do plan-context não cria phase-03-phase-03-videos/. Depois da primeira
+     etapa, o sources_mtime dos artefatos já registra os caminhos certos, o que
+     ajuda as próximas.
+  3. library-refs.md é condicional. O plan-resolve só o cria se algum TD
+     decidido tiver **Libraries:** preenchido. A Fase 02 backend não tem esse
+     arquivo. Na Fase 03 ele deve aparecer naturalmente (biblioteca de upload,
+     SDK S3/MinIO, fila). Se nenhum TD trouxer biblioteca, ele não será criado,
+     e é bom saber disso antes de conferir o entregável.
+  4. progress.md é criado pelo /implement dentro da pasta do plano.
+  5. Argumento inteiro 3: funciona enquanto existir um único documento de fase
+     com related_phases: [3]. O nome do diretório continua dependendo do mesmo
+     cuidado do item 2. Evite 03: a regex do Slug discovery procura o inteiro
+     literal, então não encontraria [3].
+
+  3. Argumentos por comando
+
+  /research phase 03 — salvar como 
+  docs/decisions/technical-decisions-phase-03-videos.md
+            (slug "phase-03-videos", scope_type: phase, related_phases: [3]),
+            seguindo o precedente de technical-decisions-phase-02-auth.md
+
+  /plan-context phase-03-videos   — diretório alvo docs/phases/phase-03-videos/ 
+  (prefixo já está no slug, como phase-02-auth)
+  /plan-validate phase-03-videos  — idem
+  /plan-resolve phase-03-videos   — idem (gera library-refs.md se houver 
+  Libraries)
+  /plan-validate phase-03-videos  — repetir até status: clean
+  /plan-build phase-03-videos     — artefato 
+  docs/phases/phase-03-videos/phase-03-videos.md
+  /implement docs/phases/phase-03-videos/phase-03-videos.md   (ou: /implement 3)
+
+  Sobre o /implement, não use /implement phase-03-videos. Com argumento string,
+  ele procura primeiro docs/tasks/task-phase-03-videos/ e depois
+  docs/phases/phase-*-phase-03-videos/…. Nenhum dos dois casa com
+  phase-03-videos/. Funcionam:
+  - o caminho direto do plano (a skill aceita);
+  - /implement 3, que procura docs/phases/phase-03-*/phase-03-*.md e encontra um
+    único resultado.
+
+  Antes do /plan-context, confira com ls docs/phases/ que não sobrou nenhum
+  phase-03-phase-03-videos/.
+
+  Sobre os testes: vou rodar sempre npm test -- --runInBand, com o start:dev
+  parado, já que os testes de integração compartilham o banco. Você pediu para
+  não criar arquivos, então não salvei isso na minha memória entre sessões. Se
+  quiser, eu salvo para valer nas próximas sessões da Fase 03.
+
+✻ Brewed for 56s · done 11:25 AM
+
+※ recap: You're setting up Phase 03 so the pipeline writes exactly technical-decisions-phase-03-videos.md and docs/phases/phase-03-videos/; the analysis is done and nothing was changed. Next, run /research phase 03 and give it that filename explicitly. (turn off recaps in /config)
+
+❯ nao                                                                           
+
+● Combinado, não salvo na memória. Nesta sessão vou rodar os testes com npm test
+  -- --runInBand e o start:dev parado. Em sessões futuras, você precisará me
+  lembrar disso.
+
+  Quando quiser começar, rode o /research com o arquivo
+  technical-decisions-phase-03-videos.md indicado explicitamente.
+
+✻ Churned for 4s · done 11:34 AM
+
+❯ git status --short                                                            
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Só há um arquivo novo, ainda não rastreado:
+  _claude-sessions/14-baseline-fix-lint-migrations.txt. É o mesmo do início da
+  sessão; nada mais mudou.
+
+✻ Baked for 11s · done 12:00 PM
+
+❯ Commite _claude-sessions/14-baseline-fix-lint-migrations.txt na               
+  feature/phase-03-videos com a mensagem "docs: add claude session for baseline 
+  fixes" e faça push.                                                           
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● The only secret-like hits are test placeholder values ('refresh-secret'), so
+  it's safe to commit.
+
+  Pushed to feature/phase-03-videos (ctrl+o to expand)
+
+● Fiz o commit e o push de _claude-sessions/14-baseline-fix-lint-migrations.txt
+  para origin/feature/phase-03-videos.
+
+  - Commit: 4168983 docs: add claude session for baseline fixes
+  - Estado: a branch local está igual à remota e não sobrou nada pendente.
+  - Antes do commit: procurei segredos no arquivo. Só encontrei valores de
+    exemplo usados nos testes, como JWT_REFRESH_SECRET: 'refresh-secret', nada
+    real.
+
+✻ Crunched for 21s · done 12:01 PM
+
+❯ /context 
+  ⎿  Context usage
+     ⛀ ⛁ ⛁ ⛁ ⛀ ⛀ ⛀ ⛀ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁   Opus 5.5
+     ⛁ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶   claude-opus-5-5
+     ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶   92.8k/1m tokens (9%)
+     ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ 
+     ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶   Estimated usage by category
+     ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶   ⛁ System prompt: 3k tokens (0.3%)
+     ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶   ⛁ System tools: 17.7k tokens (2%)
+     ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶   ⛁ MCP server instructions: 945 tokens (0.1%)
+     ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶   ⛁ Custom agents: 1.1k tokens (0.1%)
+     ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛝ ⛝ ⛝ ⛝ ⛝ ⛝ ⛝   ⛁ Memory files: 1.9k tokens (0.2%)
+                                               ⛁ Skills: 7.1k tokens (0.7%)
+                                               ⛁ Messages: 61.1k tokens (6%)
+                                               ⛶ Free space: 874.2k tokens (87%)
+                                               ⛝ Autocompact buffer: 33k tokens (3%)
+
+     Auto-compact window:  1m tokens
+
+     MCP tools · /mcp (loaded on-demand)
+     └ 13 tools
+
+     Custom agents · .claude/agents/
+     └ 6 agents · 1.1k tokens
+
+     Memory files · /memory
+     └ 1 file · 1.9k tokens
+
+     Skills · /skills
+     └ 39 skills · 7.1k tokens
+
+     /context all to expand
+
+❯ /research phase 03                                                            
+                                                                                
+  Convenção de nomes (acordada na análise anterior):                            
+  - Salve como docs/decisions/technical-decisions-phase-03-videos.md, com slug  
+  "phase-03-videos", scope_type: phase e related_phases: [3] — seguindo o       
+  precedente de technical-decisions-phase-02-auth.md (o prefixo phase-03- já    
+  faz parte do slug, então o diretório da fase será                             
+  docs/phases/phase-03-videos/).                                                
+                                                                                
+  Fontes de escopo: @docs/project-plan.md (Fase 03) e a arquitetura-alvo em     
+  @docs/diagrams/software-arch.mermaid.                                         
+                                                                                
+  Restrições já dadas (não reabrir):                                            
+  - Object storage é S3-compatível (MinIO local em Docker, S3 em produção).     
+  Decida só o USO: organização de buckets/chaves, upload pré-assinado, CORS e   
+  endpoint interno (minio:9000) vs público (para URLs assinadas usadas pelo     
+  cliente).                                                                     
+  - Decisões das Fases 01/02 em docs/decisions/ são restrições (NestJS 11,      
+  TypeORM, PostgreSQL 17, guard JWT global, filtro de exceções, projeto         
+  CommonJS).                                                                    
+                                                                                
+  Decisões em aberto — para cada uma: opções, trade-offs, recomendação, campo   
+  Capability ligando ao bullet da fase e, quando houver, o campo Libraries:     
+  1. Tecnologia de fila (principal decisão de stack; o plano diz TBD): compare  
+  BullMQ+Redis, RabbitMQ, SQS/LocalStack e pg-boss.                             
+  2. Upload de até 10GB sem passar pela API: considere o limite de 5GB do PUT   
+  único do S3; compare multipart com URLs pré-assinadas por parte, tus e proxy  
+  pela API. Inclua o pré-cadastro do vídeo como rascunho ao iniciar o upload.   
+  3. Execução do worker (processo/container separado, entrypoint) e uso de      
+  FFmpeg/ffprobe para metadados e thumbnail (spawn direto vs fluent-ffmpeg —    
+  verifique o status de manutenção). Avalie ler o vídeo por URL pré-assinada em 
+  vez de baixar o arquivo inteiro.                                              
+  4. Estratégia de URL única sem conflito (atenção: o projeto é CommonJS —      
+  verifique libs ESM-only).                                                     
+  5. Streaming (sem download completo) e download: redirect para URL            
+  pré-assinada vs proxy de Range (206) pela API vs HLS — coerente com a         
+  arquitetura ("Frontend streams from Object Storage").                         
+  6. Ciclo de status (rascunho → processando → pronto/erro), política de retry  
+  e o que acontece na falha final.                                              
+                                                                                
+  Em cada TD, ressalte se a decisão afeta o repositório todo                    
+  (infra/Compose/env), o backend, o frontend ou é cross-layer.                  
+  Consulte o context7 para as versões atuais das libs candidatas.               
+  Responda em português.                                                        
+  ⎿  Read docs/project-plan.md (171 lines)
+  ⎿  Read docs/diagrams/software-arch.mermaid (54 lines)
+
+  Ran 6 shell commands · 1 failed (ctrl+o to expand)
+
+● Já levantei as versões das libs candidatas e o formato de módulo de cada uma
+  no npm. Agora vou cruzar com a documentação no context7 antes de escrever o
+  documento de decisões.
+
+  Called context7 6 times (ctrl+o to expand)
+
+● Web Search("fluent-ffmpeg repository archived deprecated 2025")
+  ⎿  Did 1 search in 3s
+
+● Web Search("MinIO community edition docker image maintenance mode 2025 2026")
+  ⎿  Did 1 search in 4s
+
+  Called context7 2 times, ran 1 shell command (ctrl+o to expand)
+
+● Web Search("LocalStack community edition auth token required 2026 free tier
+            change")  ⎿  Did 1 search in 5s
+
+● Já tenho o que preciso: versões, formato de módulo (CJS ou ESM-only) e a
+  documentação das libs candidatas. Agora vou escrever o documento de decisões.
+
+● Write(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Wrote 392 lines to
+     docs/decisions/technical-decisions-phase-03-videos.md
+      1 ---
+      2 scope_type: phase
+      3 related_phases: [3]
+      4 status: pending
+      5 date: 2026-11-20
+      6 scope_description: "Upload e processamento de vídeos: tecnologia
+        de fila, uso do object storage S3-compatível (buckets/chaves, end
+        points interno/público, CORS), protocolo de upload de até 10GB di
+        reto ao storage com pré-cadastro em rascunho, execução do worker
+        FFmpeg, URL única por vídeo, streaming/download e ciclo de status
+     … +387 lines (~35 KB) (ctrl+o to expand)
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Criei o documento docs/decisions/technical-decisions-phase-03-videos.md com 10
+  decisões técnicas (TDs), todas com Decision: _[pending]_ para você preencher.
+  O frontmatter é scope_type: phase, related_phases: [3]. Conferi três pontos:
+  - Os campos Capability citam os bullets da Fase 03 palavra por palavra, e os 9
+    bullets estão cobertos.
+  - A busca da pipeline por related_phases: [3] encontra só este documento.
+  - Não alterei nenhum outro arquivo.
+
+  Decisões e recomendações
+
+  TD: 01 Fila
+  Abrangência: Backend + Compose/env
+  Recomendação: BullMQ + Redis
+  ────────────────────────────────────────
+  TD: 02 Uso do storage
+  Abrangência: Cross-layer + Compose/env
+  Recomendação: Um bucket privado com prefixos por vídeo; um cliente S3
+    interno (minio:9000) para o tráfego real e outro com o endpoint público só
+    para assinar URLs; CORS expondo ETag
+  ────────────────────────────────────────
+  TD: 03 Upload 10GB + rascunho
+  Abrangência: Cross-layer
+  Recomendação: Multipart do S3 com URL pré-assinada por parte; o rascunho é
+    criado ao iniciar e o job é enfileirado no complete
+  ────────────────────────────────────────
+  TD: 04 Worker
+  Abrangência: Backend + Compose
+  Recomendação: Mesmo código do nestjs-project, segundo entrypoint sem HTTP,
+    container próprio com FFmpeg
+  ────────────────────────────────────────
+  TD: 05 FFmpeg
+  Abrangência: Backend
+  Recomendação: Chamada direta via child_process
+  ────────────────────────────────────────
+  TD: 06 Acesso ao arquivo
+  Abrangência: Backend
+  Recomendação: O ffprobe/ffmpeg leem por URL pré-assinada, buscando só os
+    trechos necessários, sem baixar os 10GB
+  ────────────────────────────────────────
+  TD: 07 URL única
+  Abrangência: Cross-layer
+  Recomendação: ID curto aleatório gerado com node:crypto, com índice UNIQUE e
+    nova tentativa em caso de colisão
+  ────────────────────────────────────────
+  TD: 08 Streaming/download
+  Abrangência: Cross-layer
+  Recomendação: A API autoriza e redireciona (302) para uma URL pré-assinada;
+    download com Content-Disposition: attachment
+  ────────────────────────────────────────
+  TD: 09 Modelo de status
+  Abrangência: Cross-layer
+  Recomendação: Dois eixos separados: processamento (uploading → processing →
+    ready/failed) e editorial (draft, com publicação na Fase 04)
+  ────────────────────────────────────────
+  TD: 10 Retry/falha final
+  Abrangência: Backend
+  Recomendação: 3 tentativas com backoff exponencial; erro irrecuperável para
+    mídia inválida; status failed com motivo gravado no banco
+
+  O que a pesquisa encontrou e que pesa nas escolhas
+
+  - Várias libs candidatas são ESM-only, o que conflita com o projeto CommonJS e
+    com o Jest: @nestjs/bullmq@12, pg-boss@12, nanoid@6, uuid@14,
+    sqs-consumer@15 e @tus/server@2. Por isso a recomendação fixa
+    @nestjs/bullmq@^11.0.5, que é CJS e já aceita bullmq@6.
+  - O BullMQ 6 tem backend PostgreSQL nativo. Registrei como caminho futuro para
+    dispensar o Redis, mas ele saiu só em 2026-07.
+  - fluent-ffmpeg está deprecated no npm e com o repositório arquivado.
+  - O LocalStack passou a exigir auth token a partir da versão 2026.03, o que é
+    um ponto contra a opção SQS.
+  - @golevelup/nestjs-rabbitmq@9 exige @nestjs/common ^11.1.24, mais novo que o
+    instalado (11.1.16).
+  - A MinIO parou de publicar imagens Docker da edição comunitária e arquivou o 
+    repositório. Isso não reabre a escolha de storage S3-compatível, mas a
+    imagem do Compose precisa ser escolhida com cuidado na implementação.
+
+  Desvios do formato padrão
+
+  - Campo Libraries: pus as libs dentro de cada opção (- **Libraries:** ...), e
+    não como linha **Libraries:** no nível do TD. A skill reserva essa linha
+    para o /plan-resolve, que a gera a partir da opção escolhida. Isso evita
+    deixar libs de uma recomendação que você pode não escolher.
+  - Abrangência: como o Scope aceita um único valor, indiquei a abrangência
+    (infra, backend, frontend ou cross-layer) na primeira frase do Context de
+    cada TD.
+
+  Uma decisão é sua
+
+  Os bullets da Fase 03 não citam telas. Por isso, o documento não tem TD com
+  escopo só de Frontend e trata o frontend apenas pelos contratos cross-layer.
+  Se a tela de upload entrar nesta fase, o melhor é um slice separado, como foi
+  phase-02-auth-frontend. Nesse caso, este documento precisaria ganhar
+  covers_capabilities.
+
+  Próximo passo
+
+  Preencha os campos **Decision:**. Depois rode /plan-context phase-03-videos,
+  informando que o diretório alvo é docs/phases/phase-03-videos/. A sequência
+  segue com /plan-validate, depois /plan-resolve, e então /plan-validate de novo
+  até o status ficar clean.
+
+  Fontes:
+  - fluent-ffmpeg no npm (deprecated) · organização fluent-ffmpeg no GitHub 
+    (arquivada)
+  - MinIO em modo manutenção · Chainguard: imagens MinIO · MinIO is dead
+  - LocalStack: single image / auth token · LocalStack 2026.03.0 · The road 
+    ahead for LocalStack
+  - Documentação via context7: BullMQ v6 (/taskforcesh/bullmq, incluindo o
+    backend PostgreSQL), @nestjs/bullmq (/nestjs/bull), pg-boss 12.38.2, AWS SDK
+    JS v3. As versões e os formatos de módulo foram conferidos com npm view em
+    2026-11-20.
+
+✻ Cogitated for 5m 6s · done 12:20 PM
+
+※ recap: Estamos preparando a Fase 03 (vídeos), e o documento de decisões está pronto em docs/decisions/technical-decisions-phase-03-videos.md, com 10 decisões técnicas pendentes. Próximo passo: preencher os campos Decision e rodar /plan-context phase-03-videos. (turn off recaps in /config)
+
+❯ Faça uma revisão crítica de                                                   
+  @docs/decisions/technical-decisions-phase-03-videos.md:                       
+  1. Há algo sem origem rastreável (requisito ou comportamento que não vem do   
+  docs/project-plan.md, dos docs/decisions/ anteriores ou da pesquisa citada)?  
+  2. A TD-09 tem uma opção de eixo único de status "draft → processing → ready  
+  | failed", alinhada literalmente ao critério de aceite do desafio ("rascunho  
+  → processando → pronto/erro refletido no banco")? Se não tiver, acrescente    
+  essa opção com seus trade-offs, sem marcar decisão.                           
+  3. A TD-02 registra que a imagem Docker do MinIO deve ser fixada numa tag     
+  existente (nunca latest), dado o fim das imagens da edição comunitária?       
+  4. Sobre o frontend: confirmo que está fora do escopo desta fase (o desafio é 
+  só backend) — não haverá slice de frontend.                                   
+     Corrija o necessário mantendo todas as decisões como pending. Responda em  
+  português.                                                                    
+  ⎿  Read docs/decisions/technical-decisions-phase-03-videos.md (392 lines)
+
+● Vou conferir dois fatos antes de editar: se o guard JWT global tem um
+  decorator @Public, e se a imagem minio/minio ainda existe com tags fixáveis.
+
+  Ran 4 shell commands (ctrl+o to expand)
+
+● Agora vou aplicar as correções.
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Added 1 line, removed 1 line
+      11  _Subprojects in scope:_
+      12 
+      13  - `nestjs-project/` — API: orquestra o upload (pré-cadastro, as
+          sinatura de partes, conclusão), publica jobs na fila, emite URL
+          s de streaming/download. Também hospeda o código do Video Worke
+          r (ver TD-04). Recebe novos serviços no `compose.yaml` (storage
+          , fila, worker) e novas chaves de env no schema Joi (`phase-01-
+          configuracao-base/TD-02`).
+      14 -- `next-frontend/` — Nenhum TD com `Scope: Frontend` neste docu
+         -mento: os bullets da Fase 03 não listam telas (diferente da Fas
+         -e 02, que tinha "Telas de cadastro, login…"). O frontend é afet
+         -ado apenas pelos contratos **Cross-layer** fixados aqui (TD-02 
+         -CORS/endpoint público, TD-03 handshake do upload multipart, TD-
+         -07 formato da URL, TD-08 URLs de streaming/download, TD-09 stat
+         -us exposto). Se a tela de upload for entregue nesta fase, ela d
+         -eve virar um slice separado (precedente: `phase-02-auth-fronten
+         -d`), que herda estes contratos.                                
+      14 +- `next-frontend/` — **Fora do escopo desta fase, sem slice de 
+         +frontend** (decisão de escopo confirmada na sessão de 2026-11-2
+         +0: o desafio da Fase 03 é só backend; os bullets da Fase 03 tam
+         +bém não listam telas). Nenhum TD com `Scope: Frontend`. Os TDs 
+         +marcados `Cross-layer` (TD-02, TD-03, TD-07, TD-08, TD-09) fixa
+         +m apenas o **contrato da API** que um cliente HTTP (testes E2E 
+         +agora, frontend em fase futura) consome. Nenhum código do `next
+         +-frontend/` é produzido nesta fase.                            
+      15 
+      16  **Restrições herdadas (não reabertas):** NestJS 11 (`@nestjs/co
+          mmon@11.1.16` instalado), TypeORM 0.3 + PostgreSQL 17, guard JW
+          T global (`phase-02-auth/TD-02`), filtro de exceções de domínio
+           `{ statusCode, error, message }` (`phase-02-auth/TD-07`), conf
+          ig com `registerAs` + Joi (`phase-01-configuracao-base/TD-01..T
+          D-04`), projeto **CommonJS** (`tsconfig` com `module: nodenext`
+           e sem `"type": "module"` no `package.json`), Jest 30 + ts-jest
+           29. Object storage **S3-compatível** (MinIO em Docker no dev,
+          S3 em produção): aqui só se decide o **uso**.
+      17 
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Added 3 lines, removed 1 line
+      15 
+      16  **Restrições herdadas (não reabertas):** NestJS 11 (`@nestjs/co
+          mmon@11.1.16` instalado), TypeORM 0.3 + PostgreSQL 17, guard JW
+          T global (`phase-02-auth/TD-02`), filtro de exceções de domínio
+           `{ statusCode, error, message }` (`phase-02-auth/TD-07`), conf
+          ig com `registerAs` + Joi (`phase-01-configuracao-base/TD-01..T
+          D-04`), projeto **CommonJS** (`tsconfig` com `module: nodenext`
+           e sem `"type": "module"` no `package.json`), Jest 30 + ts-jest
+           29. Object storage **S3-compatível** (MinIO em Docker no dev,
+          S3 em produção): aqui só se decide o **uso**.
+      17 
+      18 -**Nota sobre ESM-only:** o Node 24/25 consegue fazer `require()
+         -` de ESM, mas o Jest 30 com ts-jest em modo CJS não transforma 
+         -`node_modules` por padrão (`transformIgnorePatterns`). Por isso
+         -, pacotes ESM-only tendem a quebrar testes unitários e de integ
+         -ração sem ajuste extra de config. Isso pesa contra libs com `"t
+         -ype": "module"` em vários TDs abaixo (dados conferidos no regis
+         -try npm em 2026-11-20).                                        
+      18 +**Nota sobre ESM-only:** o Node 24/25 consegue fazer `require()
+         +` de ESM, mas o Jest 30 com ts-jest em modo CJS não transforma 
+         +`node_modules` por padrão (`transformIgnorePatterns`). Por isso
+         +, pacotes ESM-only tendem a quebrar testes unitários e de integ
+         +ração sem ajuste extra de config. Isso pesa contra libs com `"t
+         +ype": "module"` em vários TDs abaixo. O formato de módulo foi c
+         +onferido no registry npm em 2026-11-20; a quebra no Jest é infe
+         +rência a partir do comportamento padrão documentado e **não foi
+         + reproduzida neste repositório**.                              
+      19 
+      20 +**Convenção de origem:** valores numéricos e políticas marcados
+         + com _(sugestão — sem origem normativa)_ não vêm do project-pla
+         +n, de TDs anteriores nem da pesquisa citada. São pontos de part
+         +ida a confirmar no `/plan-resolve` ou na implementação.        
+      21 +                                                               
+      22  ---
+      23 
+      24  ## TD-01: Tecnologia de Fila (Message Queue)
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Added 1 line, removed 1 line
+      34  ### Option A: BullMQ + Redis
+      35  - Fila sobre Redis com retry (`attempts` + `backoff` exponencia
+          l), `UnrecoverableError` para falha sem retry, detecção de jobs
+           travados (stalled) e retenção configurável de jobs falhos. Int
+          egra no Nest via `@nestjs/bullmq` (`BullModule.forRootAsync` +
+          `@Processor`/`WorkerHost`).
+      36  - **Pros:** padrão de fato no ecossistema Nest, com módulo ofic
+          ial. API madura e bem documentada. Isolamento por `prefix` em t
+          estes. O BullMQ 6 também tem backend PostgreSQL (`createPostgre
+          sBackend`) com a mesma API, o que dá um caminho futuro para rem
+          over o Redis sem reescrever o código (backend lançado em 2026-0
+          7, ainda recente).
+      37 -- **Cons:** adiciona o Redis ao Compose e à produção (mais um s
+         -erviço stateful; avaliar Valkey como imagem compatível). **Fixa
+         -r `@nestjs/bullmq@^11.0.5`**: a linha 12.x é ESM-only (`"type":
+         - "module"`), enquanto a 11.0.5 é CJS e já aceita `bullmq ^6`.  
+      37 +- **Cons:** adiciona o Redis ao Compose e à produção (mais um s
+         +erviço stateful). **Fixar `@nestjs/bullmq@^11.0.5`**: a linha 1
+         +2.x é ESM-only (`"type": "module"`), enquanto a 11.0.5 é CJS e 
+         +já aceita `bullmq ^6`.                                         
+      38  - **Libraries:** `bullmq@^6.7.8` (CJS em `dist/cjs`), `@nestjs/
+          bullmq@^11.0.5`, cliente Redis `ioredis` (peer do bullmq).
+      39 
+      40  ### Option B: RabbitMQ (AMQP)
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Added 4 lines, removed 1 line
+      72  2. **Endpoint:** dentro do Compose o storage é `minio:9000` (re
+          gra do CLAUDE.md), mas a URL pré-assinada é assinada com o *hos
+          t* (SigV4) e precisa ser resolvível pelo browser.
+      73  3. **CORS:** o browser lê o header `ETag` de cada parte do mult
+          ipart (TD-03), então o CORS precisa expor `ETag`.
+      74 
+      75 -_Risco de infra (não reabre a decisão S3):_ a MinIO parou de pu
+         -blicar imagens Docker da edição comunitária em 2025-10, e o rep
+         -ositório entrou em modo manutenção/arquivado. A imagem do Compo
+         -se (tag fixada, fork ou alternativa S3-compatível) deve ser esc
+         -olhida conscientemente na implementação.                       
+      75 +_Risco de infra (não reabre a decisão S3):_ a MinIO parou de pu
+         +blicar imagens Docker da edição comunitária em 2025-10, e o rep
+         +ositório entrou em modo manutenção/arquivado (fontes de terceir
+         +os; ver pesquisa). Em 2026-11-20, a API do Docker Hub respondeu
+         + `object not found` para `minio/minio` e 404 para `minio/mc`: a
+         +s imagens oficiais não estão mais disponíveis no Docker Hub. Re
+         +strição para o Compose, valendo para qualquer opção abaixo:    
+      76 +- **A imagem do storage deve ser fixada em uma tag existente e 
+         +verificada, preferencialmente com digest (`image: <registry>/<r
+         +epo>:<tag>@sha256:<digest>`). Nunca `latest`**, que hoje pode n
+         +ão existir ou apontar para um build sem manutenção.            
+      77 +- O registry e a tag concretos (ex.: `quay.io/minio/minio` com 
+         +uma tag `RELEASE.*` ainda disponível, ou a imagem da Chainguard
+         + `cgr.dev/chainguard/minio`) **não foram verificados nesta pesq
+         +uisa**: a consulta anônima ao Quay foi negada. Confirmar com `d
+         +ocker pull` antes de fixar.                                    
+      78 +- A mesma regra vale para a imagem do cliente `mc`, se usada pa
+         +ra bootstrap do bucket. Sem ela, o bootstrap pode ser feito pel
+         +a própria API ou pelo worker via SDK (`CreateBucket`/`PutBucket
+         +Cors`).                                                        
+      79 
+      80  **Options:**
+      81 
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Rejected update to docs/decisions/technical-decisions-phase-03-videos.md
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Rejected update to docs/decisions/technical-decisions-phase-03-videos.md
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Rejected update to docs/decisions/technical-decisions-phase-03-videos.md
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Rejected update to docs/decisions/technical-decisions-phase-03-videos.md
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Rejected update to docs/decisions/technical-decisions-phase-03-videos.md
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Rejected update to docs/decisions/technical-decisions-phase-03-videos.md
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Rejected update to docs/decisions/technical-decisions-phase-03-videos.md
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Rejected update to docs/decisions/technical-decisions-phase-03-videos.md
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Rejected update to docs/decisions/technical-decisions-phase-03-videos.md
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)  ⎿  Rejected update to docs/decisions/technical-decisions-phase-03-videos.md
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Rejected update to docs/decisions/technical-decisions-phase-03-videos.md
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Rejected update to docs/decisions/technical-decisions-phase-03-videos.md
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Rejected update to docs/decisions/technical-decisions-phase-03-videos.md
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Rejected update to docs/decisions/technical-decisions-phase-03-videos.md
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Rejected update to docs/decisions/technical-decisions-phase-03-videos.md
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Rejected update to docs/decisions/technical-decisions-phase-03-videos.md
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Rejected update to docs/decisions/technical-decisions-phase-03-videos.md
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Rejected update to docs/decisions/technical-decisions-phase-03-videos.md
+
+❯ pergunte novamente                                                            
+
+● Vou reenviar as 13 edições restantes, já que as 4 primeiras estão aplicadas no
+  arquivo. · summary
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Added 1 line, removed 1 line
+      80  **Options:**
+      81 
+      82  ### Option A: Bucket único privado com prefixos + dois clientes
+           S3 (interno e público)
+      83 -- Um bucket privado (`S3_BUCKET`) com chaves `videos/{videoId}/
+         -original` e `videos/{videoId}/thumbnail.jpg`. Todo acesso do cl
+         -iente é por URL pré-assinada. A API e o worker operam com um `S
+         -3Client` no endpoint interno (`http://minio:9000`). Um segundo 
+         -`S3Client`, configurado com `S3_PUBLIC_ENDPOINT` (ex.: `http://
+         -localhost:9000`), é usado **só para assinar** (assinar é operaç
+         -ão local, sem tráfego de rede). CORS no bucket: origem do front
+         -end, métodos `PUT/GET/HEAD`, `ExposeHeaders: ETag`.            
+      83 +- Um bucket privado (`S3_BUCKET`) com chaves `videos/{videoId}/
+         +original` e `videos/{videoId}/thumbnail.jpg`. Todo acesso do cl
+         +iente é por URL pré-assinada. A API e o worker operam com um `S
+         +3Client` no endpoint interno (`http://minio:9000`). Um segundo 
+         +`S3Client`, configurado com `S3_PUBLIC_ENDPOINT` (ex.: `http://
+         +localhost:9000`), é usado **só para assinar** (assinar é operaç
+         +ão local, sem tráfego de rede). CORS no bucket: origem do clien
+         +te browser (frontend futuro), métodos `PUT/GET/HEAD`, `ExposeHe
+         +aders: ETag`. Nesta fase sem frontend, o CORS só é exercitado s
+         +e algum teste usar browser; os testes E2E via HTTP direto não d
+         +ependem dele.                                                  
+      84  - **Pros:** respeita a regra de service name do Compose para to
+          do tráfego real. URLs assinadas válidas para o browser. Tudo pr
+          ivado (unlisted da Fase 04 continua protegido). Um bucket só si
+          mplifica bootstrap e lifecycle (ex.: regra `AbortIncompleteMult
+          ipartUpload`).
+      85  - **Cons:** duas configurações de endpoint para manter coerente
+          s. Thumbnails em listagens (Fases 04/07) também precisam de URL
+           assinada (barato, pois é offline, mas impede cache de CDN por
+          URL estável). Configuração de CORS varia por provedor (verifica
+          r se o MinIO escolhido aceita `PutBucketCors` ou só CORS global
+           por env).
+      86  - **Libraries:** `@aws-sdk/client-s3@^3.1173.0`, `@aws-sdk/s3-r
+          equest-presigner@^3.1173.0` (ambos com build CJS).
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Added 1 line, removed 1 line
+      109 
+      110  **Capability:** Transversal — covers: "Upload de vídeos com su
+           porte a arquivos de até 10GB sem impacto na performance", "Pré
+           -cadastro automático do vídeo como rascunho ao iniciar o uploa
+           d"
+      111 
+      112 -**Context:** _Abrangência: Cross-layer — o handshake vive na A
+          -PI (orquestração) e no browser (envio das partes); depende do 
+          -TD-02._ Os bytes de até 10GB **não devem passar pela API** ("s
+          -em impacto na performance"). O upload deve poder ser **retomad
+          -o** após falha de conexão (Pontos de Atenção do project-plan).
+          - O PUT único do S3 aceita no máximo **5GB**, então a URL pré-a
+          -ssinada simples é inviável para 10GB. O multipart do S3 aceita
+          - partes de 5MiB a 5GiB e até 10.000 partes. O vídeo é pré-cada
+          -strado como rascunho no momento em que o upload começa.       
+      112 +**Context:** _Abrangência: Cross-layer — o handshake vive na A
+          +PI (orquestração) e no cliente (envio das partes); nesta fase 
+          +o cliente são os testes E2E, e o frontend consumirá o mesmo co
+          +ntrato em fase futura; depende do TD-02._ Os bytes de até 10GB
+          + **não devem passar pela API** ("sem impacto na performance").
+          + O upload deve poder ser **retomado** após falha de conexão (P
+          +ontos de Atenção do project-plan). O PUT único do S3 aceita no
+          + máximo **5GB**, então a URL pré-assinada simples é inviável p
+          +ara 10GB. O multipart do S3 aceita partes de 5MiB a 5GiB e até
+          + 10.000 partes. O vídeo é pré-cadastrado como rascunho no mome
+          +nto em que o upload começa.                                   
+      113 
+      114  **Options:**
+      115 
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Added 1 line, removed 1 line
+      114  **Options:**
+      115 
+      116  ### Option A: S3 Multipart com URLs pré-assinadas por parte (o
+           rquestrado pela API)
+      117 -- Fluxo: (1) cliente autenticado chama a API para iniciar. A A
+          -PI valida o tamanho declarado (≤ 10GB) e o content-type (allow
+          -list), **cria o vídeo em rascunho**, chama `CreateMultipartUpl
+          -oad` e devolve `videoId`, `uploadId`, `partSize` e `partCount`
+          -. (2) O cliente pede URLs assinadas por lote de partes e faz `
+          -PUT` direto no storage, guardando cada `ETag`. (3) O cliente e
+          -nvia as `ETag`s para a API, que faz `CompleteMultipartUpload`,
+          - confere o tamanho com `HeadObject` e enfileira o job (TD-01).
+          - Retomada: `ListParts` diz quais partes já subiram. Também há 
+          -um endpoint de abort.                                         
+      117 +- Fluxo: (1) cliente autenticado chama a API para iniciar. A A
+          +PI valida o tamanho declarado (≤ 10GB, do project-plan) e o co
+          +ntent-type (allowlist _(sugestão — sem origem normativa)_), **
+          +cria o vídeo em rascunho**, chama `CreateMultipartUpload` e de
+          +volve `videoId`, `uploadId`, `partSize` e `partCount`. (2) O c
+          +liente pede URLs assinadas por lote de partes e faz `PUT` dire
+          +to no storage, guardando cada `ETag`. (3) O cliente envia as `
+          +ETag`s para a API, que faz `CompleteMultipartUpload`, confere 
+          +o tamanho com `HeadObject` e enfileira o job (TD-01). Retomada
+          +: `ListParts` diz quais partes já subiram. Também há um endpoi
+          +nt de abort.                                                  
+      118  - **Pros:** zero bytes pela API. Retomada e paralelismo nativo
+           s do S3. Funciona igual em MinIO e S3. A API decide quando pro
+           cessar, no `complete`, sem precisar de notificações de bucket.
+      119  - **Cons:** 3–4 endpoints de orquestração e um cliente mais el
+           aborado no browser (pode usar `@uppy/aws-s3`, que é ESM, sem p
+           roblema no frontend). Uploads abandonados deixam partes órfãs
+           (precisa de lifecycle `AbortIncompleteMultipartUpload` e/ou li
+           mpeza de rascunhos parados). O CORS precisa expor `ETag` (TD-0
+           2).
+      120  - **Libraries:** backend `@aws-sdk/client-s3`, `@aws-sdk/s3-re
+           quest-presigner`. Frontend (opcional) `@uppy/core` + `@uppy/aw
+           s-s3`.
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Added 2 lines, removed 2 lines
+      116  ### Option A: S3 Multipart com URLs pré-assinadas por parte (o
+           rquestrado pela API)
+      117  - Fluxo: (1) cliente autenticado chama a API para iniciar. A A
+           PI valida o tamanho declarado (≤ 10GB, do project-plan) e o co
+           ntent-type (allowlist _(sugestão — sem origem normativa)_), **
+           cria o vídeo em rascunho**, chama `CreateMultipartUpload` e de
+           volve `videoId`, `uploadId`, `partSize` e `partCount`. (2) O c
+           liente pede URLs assinadas por lote de partes e faz `PUT` dire
+           to no storage, guardando cada `ETag`. (3) O cliente envia as `
+           ETag`s para a API, que faz `CompleteMultipartUpload`, confere
+           o tamanho com `HeadObject` e enfileira o job (TD-01). Retomada
+           : `ListParts` diz quais partes já subiram. Também há um endpoi
+           nt de abort.
+      118  - **Pros:** zero bytes pela API. Retomada e paralelismo nativo
+           s do S3. Funciona igual em MinIO e S3. A API decide quando pro
+           cessar, no `complete`, sem precisar de notificações de bucket.
+      119 -- **Cons:** 3–4 endpoints de orquestração e um cliente mais el
+          -aborado no browser (pode usar `@uppy/aws-s3`, que é ESM, sem p
+          -roblema no frontend). Uploads abandonados deixam partes órfãs 
+          -(precisa de lifecycle `AbortIncompleteMultipartUpload` e/ou li
+          -mpeza de rascunhos parados). O CORS precisa expor `ETag` (TD-0
+          -2).                                                           
+      120 -- **Libraries:** backend `@aws-sdk/client-s3`, `@aws-sdk/s3-re
+          -quest-presigner`. Frontend (opcional) `@uppy/core` + `@uppy/aw
+          -s-s3`.                                                        
+      119 +- **Cons:** 3–4 endpoints de orquestração. O cliente precisa c
+          +oordenar partes, o que é mais elaborado que um POST único (nes
+          +ta fase, os testes E2E fazem esse papel). Uploads abandonados 
+          +deixam partes órfãs (precisa de lifecycle `AbortIncompleteMult
+          +ipartUpload` e/ou limpeza de rascunhos parados). Um cliente br
+          +owser futuro exige CORS expondo `ETag` (TD-02).               
+      120 +- **Libraries:** `@aws-sdk/client-s3`, `@aws-sdk/s3-request-pr
+          +esigner`.                                                     
+      121 
+      122  ### Option B: Protocolo tus (servidor tus com store S3)
+      123  - Servidor tus (`@tus/server` + `@tus/s3-store`) montado na AP
+           I ou em um serviço próprio. O cliente usa `tus-js-client`/Uppy
+           . O servidor recebe os chunks e os grava no S3 como multipart.
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Rejected update to docs/decisions/technical-decisions-phase-03-videos.md
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Rejected update to docs/decisions/technical-decisions-phase-03-videos.md
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Rejected update to docs/decisions/technical-decisions-phase-03-videos.md
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Rejected update to docs/decisions/technical-decisions-phase-03-videos.md
+  ⎿  Interrupted · What should Claude do instead?
+
+❯ 1                                                                             
+
+● Entendi "1" como uma edição por vez; corrija se não for isso. Já foram
+  aplicadas 4 das 17 edições, e a próxima é a recomendação do TD-03, que marca
+  os parâmetros de 64MiB e 1h como sugestão sem origem normativa. · summary
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Added 1 line, removed 1 line
+      131  - **Cons:** 10GB atravessam a API (CPU, rede, conexões longas,
+            timeouts de proxy). Sem retomada: uma queda reinicia do zero.
+            Contradiz a arquitetura ("API uploads to storage" vale para a
+           rquivos pequenos, não para o vídeo bruto).
+      132  - **Libraries:** `@aws-sdk/lib-storage@^3.1173.0`, `busboy`.
+      133 
+      134 -**Recommendation:** **Option A** — é a única que atende ao mes
+          -mo tempo "10GB sem impacto" (bytes direto no storage), "retoma
+          -r em caso de falha" (`ListParts`) e o limite de 5GB do PUT úni
+          -co. O pré-cadastro em rascunho acontece no endpoint de início,
+          - e o enfileiramento acontece no `complete`, que é idempotente.
+          - Parâmetros sugeridos: partes de 64MiB (cerca de 160 partes pa
+          -ra 10GB, bem abaixo de 10.000) e URLs de parte com expiração c
+          -urta (ex.: 1h, renováveis por lote). Depende do TD-02.        
+      134 +**Recommendation:** **Option A** — é a única que atende ao mes
+          +mo tempo "10GB sem impacto" (bytes direto no storage), "retoma
+          +r em caso de falha" (`ListParts`) e o limite de 5GB do PUT úni
+          +co. O pré-cadastro em rascunho acontece no endpoint de início,
+          + e o enfileiramento acontece no `complete`, que é idempotente.
+          + Parâmetros _(sugestão — sem origem normativa)_: partes de 64M
+          +iB (cerca de 160 partes para 10GB, bem abaixo do limite de 10.
+          +000) e URLs de parte com expiração curta (ex.: 1h, renováveis 
+          +por lote). Depende do TD-02.                                  
+      135 
+      136  **Decision:** _[pending]_
+      137 
+● Próxima: TD-06. Marca o comportamento do FFmpeg com moov no final do arquivo
+  como não verificado nesta pesquisa.
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Added 1 line, removed 1 line
+      218  ### Option A: Ler por URL pré-assinada (GET) gerada para o end
+           point interno
+      219  - O worker gera uma URL GET de curta duração com o cliente **i
+           nterno** (`minio:9000`) e a passa como `-i` para o ffprobe e o
+            ffmpeg. Só a thumbnail gerada é gravada em disco temporário e
+            enviada com `PutObject`.
+      220  - **Pros:** sem baixar 10GB. Uso de disco mínimo. Processament
+           o rápido mesmo com arquivos enormes.
+      221 -- **Cons:** depende de o storage suportar `Range` (S3 e MinIO 
+          -suportam). MP4 com `moov` no final exige um request extra de r
+          -ange (o FFmpeg lida com isso). Erros de rede viram erros do jo
+          -b (retry no TD-10).                                           
+      221 +- **Cons:** depende de o storage suportar `Range` (S3 e MinIO 
+          +suportam). MP4 com `moov` no final exige um request extra de r
+          +ange (o FFmpeg faz seek em entradas HTTP; comportamento conhec
+          +ido, mas **não verificado nesta pesquisa**: validar com um arq
+          +uivo de teste na implementação). Erros de rede viram erros do 
+          +job (retry no TD-10).                                         
+      222  - **Libraries:** `@aws-sdk/s3-request-presigner`.
+      223 
+      224  ### Option B: Download completo para disco temporário
+
+● Próxima: TD-07, Option A. Marca 11 caracteres e 64 bits como sugestão. Também
+  aponta o código real que já trata o erro 23505
+  (src/channels/channels.service.ts).
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Added 1 line, removed 1 line
+      250  **Options:**
+      251 
+      252  ### Option A: ID aleatório curto gerado com `node:crypto` (bas
+           e64url/base62) + índice UNIQUE
+      253 -- `public_id` de 11 caracteres gerado com `crypto.randomBytes`
+          -/`randomInt` sobre um alfabeto URL-safe (cerca de 64 bits de e
+          -ntropia, no estilo YouTube), separado da PK. Coluna com `UNIQU
+          -E`. Em violação `23505`, gera de novo e repete (padrão de uniq
+          -ue-violation já usado em `channels`).                         
+      253 +- `public_id` curto (ex.: 11 caracteres, cerca de 64 bits de e
+          +ntropia _(sugestão — sem origem normativa)_) gerado com `crypt
+          +o.randomBytes`/`randomInt` sobre um alfabeto URL-safe, separad
+          +o da PK. Coluna com `UNIQUE`. Em violação `23505`, gera de nov
+          +o e repete (mesmo código de erro já tratado em `src/channels/c
+          +hannels.service.ts`, `PG_UNIQUE_VIOLATION`).                  
+      254  - **Pros:** zero dependência e zero problema de ESM. Curto e n
+           ão enumerável (não revela volume nem ordem). Colisão praticame
+           nte impossível, e o UNIQUE + retry garante "nunca conflita".
+      255  - **Cons:** é preciso escrever um gerador pequeno (alfabeto +
+           rejeição de viés) e o loop de retry.
+      256  - **Libraries:** nenhuma (Node `crypto`).
+
+● Próxima: TD-07, Option B. Troca a afirmação não verificada ("o próprio Sqids
+  desaconselha…") por um fato: Sqids é codificação, não criptografia.
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Added 1 line, removed 1 line
+      258  ### Option B: Sqids sobre ID sequencial
+      259  - Codifica a PK numérica em uma string curta e reversível (`sq
+           ids`, dual CJS/ESM).
+      260  - **Pros:** curto, determinístico, sem colisão por construção.
+            Pacote CJS-compatível.
+      261 -- **Cons:** reversível e ordenável: com o alfabeto, revela vol
+          -ume e ordem e permite enumerar vídeos unlisted (Fase 04/05). O
+          - próprio projeto Sqids desaconselha uso como segurança. Exige 
+          -PK sequencial.                                                
+      261 +- **Cons:** reversível e ordenável: com o alfabeto, revela vol
+          +ume e ordem e permite enumerar vídeos unlisted (Fase 04/05). N
+          +ão é mecanismo de sigilo (é codificação, não criptografia). Ex
+          +ige PK sequencial.                                            
+      262  - **Libraries:** `sqids@^0.3.0`.
+      263 
+      264  ### Option C: UUID (v4/v7) como identificador público
+
+● Próxima: TD-08, Context. Deixa explícito que o player é de uma fase futura
+  (Fase 05), já que o frontend está fora de escopo.
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Added 1 line, removed 1 line
+      285 
+      286  **Capability:** Transversal — covers: "Reprodução via streamin
+           g (sem necessidade de download completo)", "Download do vídeo
+           pelo usuário"
+      287 
+      288 -**Context:** _Abrangência: Cross-layer — o player do frontend 
+          -consome a URL; a API autoriza e emite; o storage serve os byte
+          -s. Depende do TD-02 e do TD-07._ O diagrama C4 diz "Frontend *
+          -*streams from Object Storage**", então os bytes do vídeo não p
+          -assam pela API. A reprodução sem download completo exige reque
+          -sts HTTP `Range` (206), que o S3 e o MinIO suportam nativament
+          -e. O download precisa de `Content-Disposition: attachment`. O 
+          -acesso anônimo é permitido (Fase 05), mas rascunhos e unlisted
+          - exigem controle, então URL pública permanente não serve.     
+      288 +**Context:** _Abrangência: Cross-layer — a API autoriza e emit
+          +e a URL; o storage serve os bytes; o player (frontend futuro, 
+          +Fase 05) consome o mesmo contrato. Depende do TD-02 e do TD-07
+          +._ O diagrama C4 diz "Frontend **streams from Object Storage**
+          +", então os bytes do vídeo não passam pela API. A reprodução s
+          +em download completo exige requests HTTP `Range` (206), que o 
+          +S3 e o MinIO suportam nativamente. O download precisa de `Cont
+          +ent-Disposition: attachment`. O acesso anônimo é permitido (Fa
+          +se 05), mas rascunhos e unlisted exigem controle, então URL pú
+          +blica permanente não serve.                                   
+      289 
+      290  **Options:**
+      291 
+
+● Próxima: TD-08, Option A. Liga as rotas públicas ao decorator @Public() que já
+  existe no código.
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Added 1 line, removed 1 line
+      290  **Options:**
+      291 
+      292  ### Option A: Endpoint da API que autoriza e redireciona (302)
+            para URL GET pré-assinada
+      293 -- `GET /videos/{publicId}/stream` e `GET /videos/{publicId}/do
+          -wnload` (rotas públicas, marcadas para pular o guard JWT globa
+          -l) validam o estado do vídeo e respondem 302 para uma URL assi
+          -nada de curta duração. No download, a URL leva `ResponseConten
+          -tDisposition=attachment; filename=...`. O `<video>` segue o re
+          -direct e faz os `Range` direto no storage.                    
+      293 +- `GET /videos/{publicId}/stream` e `GET /videos/{publicId}/do
+          +wnload` (rotas públicas via o decorator `@Public()` existente 
+          +em `src/auth/decorators/public.decorator.ts`, que libera o gua
+          +rd JWT global) validam o estado do vídeo e respondem 302 para 
+          +uma URL assinada de curta duração. No download, a URL leva `Re
+          +sponseContentDisposition=attachment; filename=...`. O `<video>
+          +` segue o redirect e faz os `Range` direto no storage.        
+      294  - **Pros:** fiel ao diagrama (bytes saem do storage). Seek nat
+           ivo via `Range`. Controle de acesso por request. Download e st
+           reaming com o mesmo mecanismo. Zero processamento extra.
+      295  - **Cons:** URL assinada expira (escolher validade compatível
+           com sessões longas de vídeo; o player pode pedir de novo). Rep
+           rodução progressiva de arquivo único, sem bitrate adaptativo.
+      296  - **Libraries:** `@aws-sdk/s3-request-presigner`.
+
+● Próxima: TD-09, Context. Registra o critério de aceite do desafio como fonte
+  externa, com data e a observação de que ele não está no project-plan.
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Added 3 lines, removed 1 line
+      319 
+      320  **Capability:** Transversal — covers: "Pré-cadastro automático
+            do vídeo como rascunho ao iniciar o upload", "Processamento a
+           utomático do vídeo após upload (extração de duração e metadado
+           s)"
+      321 
+      322 -**Context:** _Abrangência: Cross-layer — o status é exposto pe
+          -la API e interpretado pelo frontend (painel da Fase 04 mostra 
+          -"status"); define colunas e enum da tabela `videos`._ A Fase 0
+          -3 cria o vídeo "como rascunho". A Fase 04 traz o "fluxo de ras
+          -cunho → publicação" e a visibilidade público/unlisted. Há duas
+          - dimensões possivelmente distintas: o **estado técnico do arqu
+          -ivo** (enviando, processando, pronto, erro) e o **estado edito
+          -rial** (rascunho, publicado). O modelo escolhido aqui condicio
+          -na a Fase 04.                                                 
+      322 +**Context:** _Abrangência: Cross-layer — o status é exposto pe
+          +la API (o painel da Fase 04 mostra "status", conforme o projec
+          +t-plan); define colunas e enum da tabela `videos`._ A Fase 03 
+          +cria o vídeo "como rascunho". A Fase 04 traz o "fluxo de rascu
+          +nho → publicação" e a visibilidade público/unlisted. Há duas d
+          +imensões possivelmente distintas: o **estado técnico do arquiv
+          +o** (enviando, processando, pronto, erro) e o **estado editori
+          +al** (rascunho, publicado). O modelo escolhido aqui condiciona
+          + a Fase 04.                                                   
+      323 
+      324 +**Critério de aceite externo:** o desafio do MBA exige "rascun
+          +ho → processando → pronto/erro refletido no banco" (informado 
+          +na sessão de 2026-11-20; não consta no `project-plan.md`). As 
+          +opções abaixo são avaliadas também pela aderência literal a es
+          +se critério.                                                  
+      325 +                                                              
+      326  **Options:**
+      327 
+      328  ### Option A: Dois eixos ortogonais — `processing_status` + es
+           tado editorial
+
+● Próxima: TD-09, Option A. Marca como sugestão a regra da Fase 04 que eu tinha
+  inventado ("publicação exige ready") e registra que a Option A não segue
+  literalmente o critério de aceite.
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Added 2 lines, removed 2 lines
+      326  **Options:**
+      327 
+      328  ### Option A: Dois eixos ortogonais — `processing_status` + es
+           tado editorial
+      329 -- `processing_status`: `uploading → processing → ready | faile
+          -d` (Fase 03). Estado editorial `draft` na criação (o `publishe
+          -d` é adicionado pela Fase 04, junto com a visibilidade). Um ví
+          -deo pode estar `draft` + `ready` (processado, ainda não public
+          -ado). A publicação (Fase 04) exige `ready`.                   
+      329 +- `processing_status`: `uploading → processing → ready | faile
+          +d` (Fase 03). Estado editorial `draft` na criação (o estado pu
+          +blicado seria adicionado pela Fase 04, junto com a visibilidad
+          +e). Um vídeo pode estar `draft` + `ready` (processado, ainda n
+          +ão publicado). Que a publicação exija `ready` é uma regra da F
+          +ase 04 _(sugestão — sem origem normativa)_.                   
+      330  - **Pros:** cada eixo tem um dono e transições simples. A Fase
+            04 adiciona publicação sem mexer no ciclo de processamento. O
+            painel mostra os dois com clareza.
+      331 -- **Cons:** duas colunas e regras de combinação (ex.: impedir 
+          -`published` com `failed`).                                    
+      331 +- **Cons:** duas colunas e regras de combinação (ex.: impedir 
+          +publicado com `failed`). **Não é literal ao critério de aceite
+          +**: o banco mostra `uploading → processing → ready|failed` em 
+          +uma coluna e `draft` em outra, e a correspondência com "rascun
+          +ho → processando → pronto/erro" exige explicação.             
+      332  - **Libraries:** nenhuma.
+      333 
+      334  ### Option B: Enum único linear
+
+● Próxima: TD-09, Option B. Corrige um Cons para indicar que a opção antecipa o
+  estado published, que é da Fase 04.
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Added 1 line, removed 1 line
+      334  ### Option B: Enum único linear
+      335  - `draft(uploading) → processing → ready → published | failed`
+           .
+      336  - **Pros:** uma coluna. Simples de consultar.
+      337 -- **Cons:** mistura arquivo e editorial. Despublicar, reproces
+          -sar ou falhar depois de publicado gera estados ambíguos. A Fas
+          -e 04 precisaria reescrever o enum.                            
+      337 +- **Cons:** mistura arquivo e editorial. Despublicar, reproces
+          +sar ou falhar depois de publicado gera estados ambíguos. Antec
+          +ipa na Fase 03 um estado (`published`) que pertence à Fase 04.
+      338  - **Libraries:** nenhuma.
+      339 
+      340  ### Option C: Status de processamento derivado do estado do jo
+           b na fila
+
+● Na próxima rodada, adiciono a Option D (eixo único draft → processing → ready
+  | failed, literal ao critério de aceite) e anoto no Option C que ele não
+  atende ao critério. A recomendação fica para a edição seguinte, separada, para
+  você aceitar ou recusar à parte. · summary
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Added 7 lines, removed 1 line
+      340  ### Option C: Status de processamento derivado do estado do jo
+           b na fila
+      341  - O banco guarda só o editorial. "Processando/erro" vem de con
+           sultar a fila pelo job do vídeo.
+      342  - **Pros:** sem duplicação de estado.
+      343 -- **Cons:** acopla a API ao backend de fila. O estado se perde
+          - quando o job é removido pela retenção. Listagens (Fase 04) te
+          -riam de consultar a fila vídeo a vídeo.                       
+      343 +- **Cons:** acopla a API ao backend de fila. O estado se perde
+          + quando o job é removido pela retenção. Listagens (Fase 04) te
+          +riam de consultar a fila vídeo a vídeo. **Não atende ao critér
+          +io de aceite**, que exige o estado "refletido no banco".      
+      344  - **Libraries:** as da fila.
+      345 
+      346 +### Option D: Eixo único da Fase 03 — `draft → processing → re
+          +ady | failed`                                                 
+      347 +- Uma coluna `status` com quatro valores: `draft` no pré-cadas
+          +tro (upload iniciado, ainda não concluído), `processing` após 
+          +o `complete` do upload, e `ready` ou `failed` ao fim do job. C
+          +orresponde termo a termo ao critério de aceite "rascunho → pro
+          +cessando → pronto/erro refletido no banco". Nenhum estado da F
+          +ase 04 é antecipado.                                          
+      348 +- **Pros:** aderência literal e verificável ao critério de ace
+          +ite (uma consulta à tabela mostra a transição). Uma coluna, tr
+          +ansições lineares e simples de testar. Não inventa estados for
+          +a do escopo da fase.                                          
+      349 +- **Cons:** `draft` aqui significa "upload não concluído", mas
+          + na Fase 04 "rascunho" é estado editorial (não publicado). Um 
+          +vídeo `ready` ainda não publicado é editorialmente um rascunho
+          +, mas `status` dirá `ready`. A Fase 04 terá de modelar a publi
+          +cação em campo próprio (ex.: data de publicação ou visibilidad
+          +e) ou ressignificar o enum, com migration. Também não distingu
+          +e upload em andamento de upload abandonado (ambos `draft`).   
+      350 +- **Libraries:** nenhuma.                                     
+      351 +                                                              
+      352  **Recommendation:** **Option A** — o project-plan já separa os
+            dois conceitos entre fases ("rascunho ao iniciar o upload" na
+            03, "rascunho → publicação" na 04). Modelá-los como eixos ind
+           ependentes evita retrabalho de enum na Fase 04 e mantém o stat
+           us do processamento no banco, onde o painel o consulta.
+      353 
+      354  **Decision:** _[pending]_
+
+● Próximo passo: TD-09 é uma recomendação opcional, e proponho trocar A por D,
+  já que o critério de aceite é uma exigência externa literal que D atende sem
+  explicação. Se preferir manter A, recuse esta edição e a próxima, que atualiza
+  a tabela de resumo. · summary
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Added 1 line, removed 1 line
+      349  - **Cons:** `draft` aqui significa "upload não concluído", mas
+            na Fase 04 "rascunho" é estado editorial (não publicado). Um
+           vídeo `ready` ainda não publicado é editorialmente um rascunho
+           , mas `status` dirá `ready`. A Fase 04 terá de modelar a publi
+           cação em campo próprio (ex.: data de publicação ou visibilidad
+           e) ou ressignificar o enum, com migration. Também não distingu
+           e upload em andamento de upload abandonado (ambos `draft`).
+      350  - **Libraries:** nenhuma.
+      351 
+      352 -**Recommendation:** **Option A** — o project-plan já separa os
+          - dois conceitos entre fases ("rascunho ao iniciar o upload" na
+          - 03, "rascunho → publicação" na 04). Modelá-los como eixos ind
+          -ependentes evita retrabalho de enum na Fase 04 e mantém o stat
+          -us do processamento no banco, onde o painel o consulta.       
+      352 +**Recommendation:** **Option D** — o critério de aceite do des
+          +afio pede literalmente "rascunho → processando → pronto/erro" 
+          +no banco, e D o atende sem tradução nem estados da Fase 04 ant
+          +ecipados. A colisão semântica com o "rascunho" editorial fica 
+          +explícita para a Fase 04, que pode resolvê-la com um campo de 
+          +publicação próprio, sem reescrever este enum. A Option A conti
+          +nua sendo a modelagem mais limpa no longo prazo se a aderência
+          + literal ao critério não for exigência de avaliação. _(Recomen
+          +dação revista em 2026-11-20 após o critério de aceite ser info
+          +rmado; antes era A.)_                                         
+      353 
+      354  **Decision:** _[pending]_
+      355 
+
+● Próxima: tabela de resumo. Atualiza a linha do TD-09 para refletir a
+  recomendação D.
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Added 1 line, removed 1 line
+      401  | TD-06 | Backend | Acesso do worker ao arquivo | A — leitura
+           por URL pré-assinada (Range/seek) | _[pending]_ |
+      402  | TD-07 | Cross-layer | URL única por vídeo | A — ID curto ale
+           atório via `node:crypto` + UNIQUE | _[pending]_ |
+      403  | TD-08 | Cross-layer | Streaming e download | A — API autoriz
+           a e redireciona 302 para URL pré-assinada | _[pending]_ |
+      404 -| TD-09 | Cross-layer | Modelo de status do vídeo | A — eixos 
+          -ortogonais: processamento × editorial | _[pending]_ |         
+      404 +| TD-09 | Cross-layer | Modelo de status do vídeo | D — eixo ú
+          +nico `draft → processing → ready \| failed` (literal ao critér
+          +io de aceite) | _[pending]_ |                                 
+      405  | TD-10 | Backend | Retry e falha final | A — retry nativo + i
+           rrecuperável + handler de falha final | _[pending]_ |
+
+● Próxima: TD-10, Context. Tira a referência a processing_status (nome da Option
+  A do TD-09) e ao frontend, deixando o texto válido para qualquer opção do
+  TD-09.
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Added 1 line, removed 1 line
+      361 
+      362  **Capability:** Processamento automático do vídeo após upload
+           (extração de duração e metadados)
+      363 
+      364 -**Context:** _Abrangência: Backend (worker + API) — o resultad
+          -o final aparece ao frontend via `processing_status`/motivo do 
+          -erro (TD-09). Depende do TD-01 e do TD-09._ Falhas podem ser t
+          -ransitórias (rede com o storage, worker reiniciado no meio do 
+          -job) ou permanentes (arquivo que não é vídeo, codec ilegível).
+          - É preciso decidir quantas tentativas fazer, com qual espera, 
+          -como distinguir os dois tipos e o que acontece depois da últim
+          -a tentativa.                                                  
+      364 +**Context:** _Abrangência: Backend (worker + API) — o resultad
+          +o final fica no status do vídeo no banco (TD-09) e é exposto p
+          +ela API._ Depende do TD-01 e do TD-09._ Falhas podem ser trans
+          +itórias (rede com o storage, worker reiniciado no meio do job)
+          + ou permanentes (arquivo que não é vídeo, codec ilegível). É p
+          +reciso decidir quantas tentativas fazer, com qual espera, como
+          + distinguir os dois tipos e o que acontece depois da última te
+          +ntativa.                                                      
+      365 
+      366  **Options:**
+      367 
+
+● Essa última edição deixou um sublinhado de itálico sobrando antes de "Depende
+  do TD-01…". Esta corrige:
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Added 1 line, removed 1 line
+      361 
+      362  **Capability:** Processamento automático do vídeo após upload
+           (extração de duração e metadados)
+      363 
+      364 -**Context:** _Abrangência: Backend (worker + API) — o resultad
+          -o final fica no status do vídeo no banco (TD-09) e é exposto p
+          -ela API._ Depende do TD-01 e do TD-09._ Falhas podem ser trans
+          -itórias (rede com o storage, worker reiniciado no meio do job)
+          - ou permanentes (arquivo que não é vídeo, codec ilegível). É p
+          -reciso decidir quantas tentativas fazer, com qual espera, como
+          - distinguir os dois tipos e o que acontece depois da última te
+          -ntativa.                                                      
+      364 +**Context:** _Abrangência: Backend (worker + API) — o resultad
+          +o final fica no status do vídeo no banco (TD-09) e é exposto p
+          +ela API. Depende do TD-01 e do TD-09._ Falhas podem ser transi
+          +tórias (rede com o storage, worker reiniciado no meio do job) 
+          +ou permanentes (arquivo que não é vídeo, codec ilegível). É pr
+          +eciso decidir quantas tentativas fazer, com qual espera, como 
+          +distinguir os dois tipos e o que acontece depois da última ten
+          +tativa.                                                       
+      365 
+      366  **Options:**
+      367 
+
+● Próximo paso: TD-10, Opción A, marcando como sugerencia los reintentos y la
+  espera (3 y 30 s), el código de motivo, la política de conservar el archivo
+  original y el job de reconciliación; también cambio
+  processing_status/processing por términos neutros. · summary
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Added 2 lines, removed 2 lines
+      366  **Options:**
+      367 
+      368  ### Option A: Retry nativo da fila + erro irrecuperável + hand
+           ler de falha final
+      369 -- Job com `attempts: 3` e backoff exponencial (ex.: 30s base).
+          - Erros de mídia inválida (ffprobe sem stream de vídeo) lançam 
+          -erro **irrecuperável** (`UnrecoverableError` no BullMQ) e falh
+          -am na hora. No evento de falha final (tentativas esgotadas ou 
+          -irrecuperável), o worker grava `processing_status = failed` + 
+          -`processing_error` (código curto). O job falho fica retido par
+          -a diagnóstico. O processamento é idempotente (reprocessar sobr
+          -escreve thumbnail e metadados). O objeto original não é apagad
+          -o na falha.                                                   
+      369 +- Job com N tentativas e backoff exponencial (ex.: `attempts: 
+          +3`, 30s de base _(sugestão — sem origem normativa)_). Erros de
+          + mídia inválida (ffprobe sem stream de vídeo) lançam erro **ir
+          +recuperável** (`UnrecoverableError` no BullMQ) e falham na hor
+          +a. No evento de falha final (tentativas esgotadas ou irrecuper
+          +ável), o worker grava o status de falha do TD-09 e, opcionalme
+          +nte, um código curto do motivo _(sugestão — sem origem normati
+          +va)_. O job falho fica retido para diagnóstico. O processament
+          +o é idempotente (reprocessar sobrescreve thumbnail e metadados
+          +). Manter o objeto original na falha é _(sugestão — sem origem
+          + normativa)_.                                                 
+      370  - **Pros:** usa o que a fila entrega pronto. Diferencia transi
+           tório de permanente. O estado final fica no banco (TD-09). Job
+           s travados por queda do worker são re-entregues pelo stalled c
+           heck.
+      371 -- **Cons:** o handler de falha final precisa ser confiável (se
+          - ele próprio falhar, o vídeo fica `processing`). Pede uma salv
+          -aguarda, como um job de reconciliação ou o tratamento no próxi
+          -mo evento.                                                    
+      371 +- **Cons:** o handler de falha final precisa ser confiável (se
+          + ele próprio falhar, o vídeo fica em processamento indefinidam
+          +ente). Pede uma salvaguarda, como um job de reconciliação _(su
+          +gestão — sem origem normativa)_.                              
+      372  - **Libraries:** as da fila (TD-01).
+      373 
+      374  ### Option B: Retry nativo + dead-letter queue + reprocessamen
+           to manual
+
+● Última: TD-10, recomendação. Tira o número fixo "3 tentativas" e liga o estado
+  failed ao critério de aceite.
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Added 1 line, removed 1 line
+      383  - **Cons:** falhas transitórias (rede, restart do worker) vira
+           m erro definitivo, e o usuário reenvia 10GB por um soluço de r
+           ede. Contradiz o processamento "automático".
+      384  - **Libraries:** nenhuma.
+      385 
+      386 -**Recommendation:** **Option A** — 3 tentativas com backoff ex
+          -ponencial cobrem falhas transitórias. O erro irrecuperável evi
+          -ta gastar tentativas em arquivo inválido. O estado `failed` co
+          -m motivo no banco dá ao usuário e ao painel uma resposta defin
+          -itiva. Reprocessamento manual (Option B) fica para quando houv
+          -er painel administrativo.                                     
+      386 +**Recommendation:** **Option A** — poucas tentativas com backo
+          +ff exponencial cobrem falhas transitórias. O erro irrecuperáve
+          +l evita gastar tentativas em arquivo inválido. O estado `faile
+          +d` no banco dá uma resposta definitiva, como o critério de ace
+          +ite exige ("pronto/erro refletido no banco"). Reprocessamento 
+          +manual (Option B) fica para quando houver painel administrativ
+          +o.                                                            
+      387 
+      388  **Decision:** _[pending]_
+      389 
+
+● Por fim, uma verificação rápida do arquivo:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Terminei a revisão e apliquei todas as correções. As 10 decisões continuam
+  pending, e o TD-09 agora tem 4 opções.
+
+  1. O que estava sem origem rastreável, e como ficou
+
+  Onde: TD-03
+  Problema: Partes de 64MiB, URL de 1h e allowlist de content-type eram
+    invenção minha
+  Correção: Marcados como (sugestão — sem origem normativa); o limite de 10GB
+    agora cita o project-plan
+  ────────────────────────────────────────
+  Onde: TD-07
+  Problema: 11 caracteres e ~64 bits eram números meus; "padrão já usado em
+    channels" era vago
+  Correção: Marcados como sugestão; agora aponta
+    src/channels/channels.service.ts (PG_UNIQUE_VIOLATION)
+  ────────────────────────────────────────
+  Onde: TD-07
+  Problema: "O Sqids desaconselha uso como segurança" não foi verificado
+  Correção: Trocado pelo fato: é codificação, não criptografia
+  ────────────────────────────────────────
+  Onde: TD-08
+  Problema: "Rotas que pulam o guard" não tinha base no código
+  Correção: Agora cita o @Public() existente em
+    src/auth/decorators/public.decorator.ts
+  ────────────────────────────────────────
+  Onde: TD-06
+  Problema: "O FFmpeg lida com moov no final" vinha de conhecimento, não da
+    pesquisa
+  Correção: Marcado como não verificado, a validar na implementação
+  ────────────────────────────────────────
+  Onde: TD-09
+  Problema: "A publicação na Fase 04 exige ready" decidia uma regra de outra
+    fase
+  Correção: Marcado como sugestão
+  ────────────────────────────────────────
+  Onde: TD-10
+  Problema: 3 tentativas, 30s, código de motivo, manter o arquivo original e
+    job de reconciliação eram políticas minhas
+  Correção: Todos marcados como sugestão
+  ────────────────────────────────────────
+  Onde: TD-01
+  Problema: A menção ao Valkey não foi pesquisada
+  Correção: Removida
+  ────────────────────────────────────────
+  Onde: Topo
+  Problema: Dizer que libs ESM-only quebram o Jest era inferência
+  Correção: Registrado como não reproduzido neste repositório; adicionei uma
+    convenção explicando o rótulo de sugestão
+
+  2. TD-09: faltava a opção literal
+
+  A antiga Option B incluía published, então não batia com o critério de aceite.
+  Acrescentei a Option D: uma coluna status que vai de draft para processing e
+  termina em ready ou failed, com prós e contras. Também registrei o critério do
+  desafio como fonte externa, com data, e anotei nas Options A e C que elas não
+  o seguem literalmente.
+
+  Mudei a recomendação do TD-09 de A para D. O critério de aceite é uma
+  exigência externa e literal, e só D o atende sem explicação. O custo fica
+  registrado: na Fase 04, "rascunho" vira estado editorial, e a publicação
+  precisará de um campo próprio. A tabela de resumo foi atualizada. Se preferir
+  manter A como recomendação, eu reverto.
+
+  3. TD-02: imagem do MinIO
+
+  Antes, o texto só pedia uma escolha consciente da imagem. Agora diz
+  explicitamente: fixar em uma tag existente e verificada, de preferência com 
+  digest, nunca latest. A mesma regra vale para a imagem do mc.
+
+  Ao verificar, encontrei um problema: em 2026-11-20 o Docker Hub não tem mais
+  minio/minio ("object not found") nem minio/mc (404). Não consegui confirmar
+  outro registry (o Quay negou a consulta anônima), então o documento manda
+  confirmar o registry e a tag com docker pull antes de fixar.
+
+  4. Frontend fora do escopo
+
+  Registrei que não haverá slice de frontend. Os TDs Cross-layer agora descrevem
+  só o contrato da API: nesta fase quem consome são os testes E2E, e o frontend
+  virá depois. Tirei o Uppy das libs do TD-03 e deixei claro que o CORS só será
+  exercitado por um browser no futuro.
+
+  Como as decisões continuam pending, preencha os campos **Decision:** e depois
+  rode /plan-context phase-03-videos, com o diretório alvo
+  docs/phases/phase-03-videos/.
+
+✻ Cogitated for 6m 8s · done 1:43 PM
+
+※ recap: Estamos preparando o documento de decisões técnicas da Fase 03 (vídeos), e a revisão crítica está aplicada, com as 10 decisões ainda pendentes. Próximo passo: você preenche os campos Decision e roda /plan-context phase-03-videos. (turn off recaps in /config)
+
+❯ Já fiz a verificação pedida na TD-02, na máquina de desenvolvimento, em       
+  2026-11-20:                                                                   
+  - docker pull minio/minio:latest → "repository does not exist" (Docker Hub)   
+  - docker pull quay.io/minio/minio:latest → 401 UNAUTHORIZED (Quay)            
+  - docker pull cgr.dev/chainguard/minio:latest → OK, digest                    
+  sha256:e9cf6b99c226e9539ed0f14b6f00e37b07da153c7ba1f4f8709c807574b471ec       
+  - docker run com volume nomeado em /data → servidor sobe                      
+  (RELEASE.2026-11-16T00-11-40Z, fork Chainguard), GET /minio/health/live → 200 
+  OK com "Accept-Ranges: bytes"; sem volume, o log mostrou "Rename across       
+  devices not allowed" (overlayfs); com volume nomeado, o erro não ocorre.      
+                                                                                
+  Atualize o bloco de risco de infra da TD-02 substituindo o "confirmar com     
+  docker pull" por esse resultado verificado, e registre como restrições de     
+  infra para o Compose:                                                         
+  1. Imagem do storage = cgr.dev/chainguard/minio:latest@sha256:e9cf6b99c226e95 
+  39ed0f14b6f00e37b07da153c7ba1f4f8709c807574b471ec (no plano gratuito a        
+  Chainguard só publica latest, por isso o pin é por digest; risco residual:    
+  remoção de digests antigos).                                                  
+  2. /data deve ser um volume nomeado (evita o erro de rename no overlayfs —    
+  verificado).                                                                  
+  3. Console web em porta fixa via --console-address ":9001" (opcional, para    
+  inspeção local).                                                              
+  4. A imagem é mínima (sem shell/curl), o que afeta o healthcheck do Compose.  
+  5. Como minio/mc também não está disponível, o bootstrap do bucket e do CORS  
+  será via SDK (CreateBucket/PutBucketCors), não por container mc.              
+     Não altere os campos Decision. Mostre o diff antes de salvar. Responda em  
+  português.                                                                    
+
+  Read 1 file (ctrl+o to expand)
+
+● Este é o diff proposto para o bloco de risco de infra do TD-02 (linhas 75–78).
+  Nada mais muda, e os campos Decision continuam iguais:
+
+  -_Risco de infra (não reabre a decisão S3):_ a MinIO parou de publicar imagens
+  Docker da edição comunitária em 2025-10, e o repositório entrou em modo 
+  manutenção/arquivado (fontes de terceiros; ver pesquisa). Em 2026-11-20, a API
+  do Docker Hub respondeu `object not found` para `minio/minio` e 404 para 
+  `minio/mc`: as imagens oficiais não estão mais disponíveis no Docker Hub. 
+  Restrição para o Compose, valendo para qualquer opção abaixo:
+  -- **A imagem do storage deve ser fixada em uma tag existente e verificada, 
+  preferencialmente com digest (`image: 
+  <registry>/<repo>:<tag>@sha256:<digest>`). Nunca `latest`**, que hoje pode não
+  existir ou apontar para um build sem manutenção.
+  -- O registry e a tag concretos (ex.: `quay.io/minio/minio` com uma tag 
+  `RELEASE.*` ainda disponível, ou a imagem da Chainguard 
+  `cgr.dev/chainguard/minio`) **não foram verificados nesta pesquisa**: a 
+  consulta anônima ao Quay foi negada. Confirmar com `docker pull` antes de 
+  fixar.
+  -- A mesma regra vale para a imagem do cliente `mc`, se usada para bootstrap 
+  do bucket. Sem ela, o bootstrap pode ser feito pela própria API ou pelo worker
+  via SDK (`CreateBucket`/`PutBucketCors`).
+  +_Risco de infra (não reabre a decisão S3):_ a MinIO parou de publicar imagens
+  Docker da edição comunitária em 2025-10, e o repositório entrou em modo 
+  manutenção/arquivado (fontes de terceiros; ver pesquisa). **Verificação na 
+  máquina de desenvolvimento em 2026-11-20:**
+  +- `docker pull minio/minio:latest` → "repository does not exist" (Docker 
+  Hub). A API do Docker Hub também responde 404 para `minio/mc`.
+  +- `docker pull quay.io/minio/minio:latest` → 401 UNAUTHORIZED (Quay).
+  +- `docker pull cgr.dev/chainguard/minio:latest` → OK, digest 
+  `sha256:e9cf6b99c226e9539ed0f14b6f00e37b07da153c7ba1f4f8709c807574b471ec`.
+  +- `docker run` com volume nomeado em `/data` → o servidor sobe 
+  (`RELEASE.2026-11-16T00-11-40Z`, fork Chainguard), e `GET /minio/health/live` 
+  → 200 OK com `Accept-Ranges: bytes`. Sem volume, o log mostrou "Rename across 
+  devices not allowed" (overlayfs); com volume nomeado, o erro não ocorre.
+  +
+  +**Restrições de infra para o Compose** (valem para qualquer opção abaixo):
+  +1. **Imagem do storage:** `cgr.dev/chainguard/minio:latest@sha256:e9cf6b99c22
+  6e9539ed0f14b6f00e37b07da153c7ba1f4f8709c807574b471ec`. No plano gratuito a 
+  Chainguard só publica a tag `latest`, por isso o pin é feito pelo digest (com 
+  digest presente, a tag não decide qual imagem é baixada). Nunca usar `latest` 
+  sem digest. Risco residual: a Chainguard pode remover digests antigos, e o 
+  pull passa a falhar até o digest ser atualizado.
+  +2. **`/data` em volume nomeado** (verificado: evita o erro "Rename across 
+  devices not allowed" do overlayfs).
+  +3. **Console web em porta fixa** via `--console-address ":9001"` (opcional, 
+  para inspeção local).
+  +4. **Imagem mínima, sem shell nem curl:** um healthcheck `CMD-SHELL` com 
+  `curl`/`wget` não roda dentro do container, então o `healthcheck` do serviço 
+  no Compose precisa de outra estratégia, a definir na implementação.
+  +5. **Sem container `mc`** (`minio/mc` indisponível): o bootstrap do bucket e 
+  do CORS é feito via SDK (`CreateBucket`/`PutBucketCors`).
+
+  Se o diff estiver certo, aprove a edição abaixo. Se não, recuse e me diga o
+  que ajustar.
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Added 12 lines, removed 4 lines
+      72  2. **Endpoint:** dentro do Compose o storage é `minio:9000` (re
+          gra do CLAUDE.md), mas a URL pré-assinada é assinada com o *hos
+          t* (SigV4) e precisa ser resolvível pelo browser.
+      73  3. **CORS:** o browser lê o header `ETag` de cada parte do mult
+          ipart (TD-03), então o CORS precisa expor `ETag`.
+      74 
+      75 -_Risco de infra (não reabre a decisão S3):_ a MinIO parou de pu
+         -blicar imagens Docker da edição comunitária em 2025-10, e o rep
+         -ositório entrou em modo manutenção/arquivado (fontes de terceir
+         -os; ver pesquisa). Em 2026-11-20, a API do Docker Hub respondeu
+         - `object not found` para `minio/minio` e 404 para `minio/mc`: a
+         -s imagens oficiais não estão mais disponíveis no Docker Hub. Re
+         -strição para o Compose, valendo para qualquer opção abaixo:    
+      76 -- **A imagem do storage deve ser fixada em uma tag existente e 
+         -verificada, preferencialmente com digest (`image: <registry>/<r
+         -epo>:<tag>@sha256:<digest>`). Nunca `latest`**, que hoje pode n
+         -ão existir ou apontar para um build sem manutenção.            
+      77 -- O registry e a tag concretos (ex.: `quay.io/minio/minio` com 
+         -uma tag `RELEASE.*` ainda disponível, ou a imagem da Chainguard
+         - `cgr.dev/chainguard/minio`) **não foram verificados nesta pesq
+         -uisa**: a consulta anônima ao Quay foi negada. Confirmar com `d
+         -ocker pull` antes de fixar.                                    
+      78 -- A mesma regra vale para a imagem do cliente `mc`, se usada pa
+         -ra bootstrap do bucket. Sem ela, o bootstrap pode ser feito pel
+         -a própria API ou pelo worker via SDK (`CreateBucket`/`PutBucket
+         -Cors`).                                                        
+      75 +_Risco de infra (não reabre a decisão S3):_ a MinIO parou de pu
+         +blicar imagens Docker da edição comunitária em 2025-10, e o rep
+         +ositório entrou em modo manutenção/arquivado (fontes de terceir
+         +os; ver pesquisa). **Verificação na máquina de desenvolvimento 
+         +em 2026-11-20:**                                               
+      76 +- `docker pull minio/minio:latest` → "repository does not exist
+         +" (Docker Hub). A API do Docker Hub também responde 404 para `m
+         +inio/mc`.                                                      
+      77 +- `docker pull quay.io/minio/minio:latest` → 401 UNAUTHORIZED (
+         +Quay).                                                         
+      78 +- `docker pull cgr.dev/chainguard/minio:latest` → OK, digest `s
+         +ha256:e9cf6b99c226e9539ed0f14b6f00e37b07da153c7ba1f4f8709c80757
+         +4b471ec`.                                                      
+      79 +- `docker run` com volume nomeado em `/data` → o servidor sobe 
+         +(`RELEASE.2026-11-16T00-11-40Z`, fork Chainguard), e `GET /mini
+         +o/health/live` → 200 OK com `Accept-Ranges: bytes`. Sem volume,
+         + o log mostrou "Rename across devices not allowed" (overlayfs);
+         + com volume nomeado, o erro não ocorre.                        
+      80 
+      81 +**Restrições de infra para o Compose** (valem para qualquer opç
+         +ão abaixo):                                                    
+      82 +1. **Imagem do storage:** `cgr.dev/chainguard/minio:latest@sha2
+         +56:e9cf6b99c226e9539ed0f14b6f00e37b07da153c7ba1f4f8709c807574b4
+         +71ec`. No plano gratuito a Chainguard só publica a tag `latest`
+         +, por isso o pin é feito pelo digest (com digest presente, a ta
+         +g não decide qual imagem é baixada). Nunca usar `latest` sem di
+         +gest. Risco residual: a Chainguard pode remover digests antigos
+         +, e o pull passa a falhar até o digest ser atualizado.         
+      83 +2. **`/data` em volume nomeado** (verificado: evita o erro "Ren
+         +ame across devices not allowed" do overlayfs).                 
+      84 +3. **Console web em porta fixa** via `--console-address ":9001"
+         +` (opcional, para inspeção local).                             
+      85 +4. **Imagem mínima, sem shell nem curl:** um healthcheck `CMD-S
+         +HELL` com `curl`/`wget` não roda dentro do container, então o `
+         +healthcheck` do serviço no Compose precisa de outra estratégia,
+         + a definir na implementação.                                   
+      86 +5. **Sem container `mc`** (`minio/mc` indisponível): o bootstra
+         +p do bucket e do CORS é feito via SDK (`CreateBucket`/`PutBucke
+         +tCors`).                                                       
+      87 +                                                               
+      88  **Options:**
+      89 
+      90  ### Option A: Bucket único privado com prefixos + dois clientes
+           S3 (interno e público)
+
+● Atualizei o bloco de risco de infra do TD-02 exatamente como no diff. O
+  "confirmar com docker pull" deu lugar ao resultado que você verificou, seguido
+  das 5 restrições de infra para o Compose. Os campos Decision não mudaram;
+  continuam _[pending]_.
+
+  Dois pontos do TD-02 ficaram sem resposta. Não mexi neles porque estão fora do
+  que você pediu:
+
+  - CORS por SDK ainda não foi testado nessa imagem. A restrição 5 define o
+    bootstrap via PutBucketCors, mas os testes cobriram só o health check e o
+    Accept-Ranges. Os Cons da Option A ainda dizem para verificar se o MinIO
+    aceita PutBucketCors ou só CORS global por env. Dá para confirmar com um
+    PutBucketCors contra o container que você já subiu.
+  - O Context do TD-02 (linha 70) ainda cita o frontend: "+ Frontend (o browser
+    faz PUT/GET direto no storage…)". Isso conflita com a decisão de que o
+    frontend está fora do escopo. Se quiser, mostro o diff para trocar por
+    "cliente browser futuro", como fiz nos outros TDs.
+
+✻ Cogitated for 52s · done 3:03 PM
+
+❯ Sobre os dois pontos em aberto da TD-02:                                      
+  1. Sim, ajuste o Context da TD-02 trocando a menção ao frontend por "cliente  
+  browser futuro", como fez nos outros TDs.                                     
+  2. Sobre o CORS: não vamos testar agora — o frontend está fora do escopo      
+  desta fase e os testes E2E enviam as partes por HTTP direto, sem browser,     
+  então nada da Fase 03 depende de CORS. Registre na TD-02 como item a          
+  verificar no SI de infraestrutura: confirmar se a imagem                      
+  cgr.dev/chainguard/minio aceita PutBucketCors; se não aceitar, usar a         
+  configuração global de CORS do MinIO por variável de ambiente (confirme o     
+  nome da variável na documentação do MinIO antes de citar, ou marque como      
+  sugestão sem origem normativa).                                               
+     Não altere os campos Decision. Mostre o diff antes de salvar. Responda em  
+  português.                                                                    
+
+● Primeiro vou confirmar o nome da variável de CORS na documentação do MinIO.
+
+  Called context7 4 times (ctrl+o to expand)
+
+● Confirmei duas coisas na documentação oficial do MinIO, via context7:
+  - A variável existe: MINIO_API_CORS_ALLOW_ORIGIN recebe uma lista de origens
+    separadas por vírgula, e o padrão é '*' (fonte: minio/minio,
+    docs/config/README.md, subsistema api).
+  - Achado relevante: a página de compatibilidade S3 (minio/docs,
+    reference/s3-api-compatibility.rst) lista BucketCORS entre os recursos de
+    bucket sem suporte. Diz que essas chamadas "não são necessárias porque o
+    CORS fica habilitado por padrão em todos os buckets para todos os verbos
+    HTTP". Ou seja, o PutBucketCors provavelmente vai falhar no MinIO. Essa
+    documentação é do upstream, não do fork da Chainguard, então continua
+    valendo verificar.
+
+  Diff proposto, com três trechos do TD-02:
+
+  @@ Context (linha 70)
+  -**Context:** _Abrangência: infra (serviço de storage no Compose, chaves de 
+  env) + Backend (clientes S3 na API e no worker) + Frontend (o browser faz 
+  PUT/GET direto no storage via URL pré-assinada)._ O storage S3-compatível já 
+  está decidido.
+  +**Context:** _Abrangência: infra (serviço de storage no Compose, chaves de 
+  env) + Backend (clientes S3 na API e no worker) + cliente browser futuro (fará
+  PUT/GET direto no storage via URL pré-assinada; nesta fase o cliente são os 
+  testes E2E por HTTP direto)._ O storage S3-compatível já está decidido.
+
+  @@ após a restrição 5 do bloco de infra
+   5. **Sem container `mc`** (`minio/mc` indisponível): o bootstrap do bucket e
+  do CORS é feito via SDK (`CreateBucket`/`PutBucketCors`).
+  +
+  +**Item a verificar no SI de infraestrutura (CORS):** nada na Fase 03 depende 
+  de CORS (frontend fora de escopo; os testes E2E enviam as partes por HTTP 
+  direto, sem browser), então a verificação fica para o SI de infraestrutura, 
+  sem bloquear a fase:
+  +- Confirmar se `cgr.dev/chainguard/minio` aceita `PutBucketCors`. A 
+  documentação upstream do MinIO (`reference/s3-api-compatibility.rst`) lista 
+  `BucketCORS` como **não suportado** e diz que o CORS já vem habilitado por 
+  padrão em todos os buckets. Espera-se, portanto, que a chamada falhe nessa 
+  imagem.
+  +- Se não aceitar, usar a configuração global de CORS do servidor pela 
+  variável de ambiente `MINIO_API_CORS_ALLOW_ORIGIN` (lista de origens separadas
+  por vírgula, padrão `'*'`; confirmada em `docs/config/README.md` do MinIO, 
+  subsistema `api`), no serviço de storage do Compose. Nesse caso, o 
+  `PutBucketCors` da restrição 5 vale só para S3 em produção.
+
+  @@ Option A — Cons
+  -Configuração de CORS varia por provedor (verificar se o MinIO escolhido 
+  aceita `PutBucketCors` ou só CORS global por env).
+  +Configuração de CORS varia por provedor (ver o item "a verificar no SI de 
+  infraestrutura" acima: `PutBucketCors` vs `MINIO_API_CORS_ALLOW_ORIGIN`).
+
+  Se concordar, aprove as edições abaixo, uma por trecho:
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Added 1 line, removed 1 line
+      67 
+      68  **Capability:** Serviço de armazenamento de arquivos (vídeos e
+          thumbnails)
+      69 
+      70 -**Context:** _Abrangência: infra (serviço de storage no Compose
+         -, chaves de env) + Backend (clientes S3 na API e no worker) + F
+         -rontend (o browser faz PUT/GET direto no storage via URL pré-as
+         -sinada)._ O storage S3-compatível já está decidido. Falta decid
+         -ir como usá-lo. Três pontos se acoplam:                        
+      70 +**Context:** _Abrangência: infra (serviço de storage no Compose
+         +, chaves de env) + Backend (clientes S3 na API e no worker) + c
+         +liente browser futuro (fará PUT/GET direto no storage via URL p
+         +ré-assinada; nesta fase o cliente são os testes E2E por HTTP di
+         +reto)._ O storage S3-compatível já está decidido. Falta decidir
+         + como usá-lo. Três pontos se acoplam:                          
+      71  1. Organização de buckets e chaves, compartilhada por API, work
+          er e bootstrap.
+      72  2. **Endpoint:** dentro do Compose o storage é `minio:9000` (re
+          gra do CLAUDE.md), mas a URL pré-assinada é assinada com o *hos
+          t* (SigV4) e precisa ser resolvível pelo browser.
+      73  3. **CORS:** o browser lê o header `ETag` de cada parte do mult
+          ipart (TD-03), então o CORS precisa expor `ETag`.
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Added 4 lines
+      85  4. **Imagem mínima, sem shell nem curl:** um healthcheck `CMD-S
+          HELL` com `curl`/`wget` não roda dentro do container, então o `
+          healthcheck` do serviço no Compose precisa de outra estratégia,
+           a definir na implementação.
+      86  5. **Sem container `mc`** (`minio/mc` indisponível): o bootstra
+          p do bucket e do CORS é feito via SDK (`CreateBucket`/`PutBucke
+          tCors`).
+      87 
+      88 +**Item a verificar no SI de infraestrutura (CORS):** nada na Fa
+         +se 03 depende de CORS (frontend fora de escopo; os testes E2E e
+         +nviam as partes por HTTP direto, sem browser), então a verifica
+         +ção fica para o SI de infraestrutura, sem bloquear a fase:     
+      89 +- Confirmar se `cgr.dev/chainguard/minio` aceita `PutBucketCors
+         +`. A documentação upstream do MinIO (`reference/s3-api-compatib
+         +ility.rst`) lista `BucketCORS` como **não suportado** e diz que
+         + o CORS já vem habilitado por padrão em todos os buckets. Esper
+         +a-se, portanto, que a chamada falhe nessa imagem.              
+      90 +- Se não aceitar, usar a configuração global de CORS do servido
+         +r pela variável de ambiente `MINIO_API_CORS_ALLOW_ORIGIN` (list
+         +a de origens separadas por vírgula, padrão `'*'`; confirmada em
+         + `docs/config/README.md` do MinIO, subsistema `api`), no serviç
+         +o de storage do Compose. Nesse caso, o `PutBucketCors` da restr
+         +ição 5 vale só para S3 em produção.                            
+      91 +                                                               
+      92  **Options:**
+      93 
+      94  ### Option A: Bucket único privado com prefixos + dois clientes
+           S3 (interno e público)
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Added 1 line, removed 1 line
+       94  ### Option A: Bucket único privado com prefixos + dois cliente
+           s S3 (interno e público)
+       95  - Um bucket privado (`S3_BUCKET`) com chaves `videos/{videoId}
+           /original` e `videos/{videoId}/thumbnail.jpg`. Todo acesso do
+           cliente é por URL pré-assinada. A API e o worker operam com um
+            `S3Client` no endpoint interno (`http://minio:9000`). Um segu
+           ndo `S3Client`, configurado com `S3_PUBLIC_ENDPOINT` (ex.: `ht
+           tp://localhost:9000`), é usado **só para assinar** (assinar é
+           operação local, sem tráfego de rede). CORS no bucket: origem d
+           o cliente browser (frontend futuro), métodos `PUT/GET/HEAD`, `
+           ExposeHeaders: ETag`. Nesta fase sem frontend, o CORS só é exe
+           rcitado se algum teste usar browser; os testes E2E via HTTP di
+           reto não dependem dele.
+       96  - **Pros:** respeita a regra de service name do Compose para t
+           odo tráfego real. URLs assinadas válidas para o browser. Tudo
+           privado (unlisted da Fase 04 continua protegido). Um bucket só
+            simplifica bootstrap e lifecycle (ex.: regra `AbortIncomplete
+           MultipartUpload`).
+       97 -- **Cons:** duas configurações de endpoint para manter coerent
+          -es. Thumbnails em listagens (Fases 04/07) também precisam de U
+          -RL assinada (barato, pois é offline, mas impede cache de CDN p
+          -or URL estável). Configuração de CORS varia por provedor (veri
+          -ficar se o MinIO escolhido aceita `PutBucketCors` ou só CORS g
+          -lobal por env).                                               
+       97 +- **Cons:** duas configurações de endpoint para manter coerent
+          +es. Thumbnails em listagens (Fases 04/07) também precisam de U
+          +RL assinada (barato, pois é offline, mas impede cache de CDN p
+          +or URL estável). Configuração de CORS varia por provedor (ver 
+          +o item "a verificar no SI de infraestrutura" acima: `PutBucket
+          +Cors` vs `MINIO_API_CORS_ALLOW_ORIGIN`).                      
+       98  - **Libraries:** `@aws-sdk/client-s3@^3.1173.0`, `@aws-sdk/s3-
+           request-presigner@^3.1173.0` (ambos com build CJS).
+       99 
+      100  ### Option B: Dois buckets — vídeos privado, thumbnails públic
+           o-leitura
+
+● Salvei os três trechos no TD-02 como no diff, e os campos Decision continuam
+  _[pending]_.
+
+  1. Context: a menção ao frontend virou "cliente browser futuro", com a nota de
+     que nesta fase o cliente são os testes E2E por HTTP direto.
+  2. Item a verificar no SI de infraestrutura: registra confirmar se
+     cgr.dev/chainguard/minio aceita PutBucketCors. Se não aceitar, usar
+     MINIO_API_CORS_ALLOW_ORIGIN, nome conferido na documentação do MinIO. O
+     item também diz que nada na Fase 03 depende de CORS.
+  3. Cons da Option A: passaram a apontar para esse item.
+
+  A documentação upstream do MinIO lista BucketCORS entre os recursos sem 
+  suporte e diz que o CORS já vem habilitado em todos os buckets. Então é
+  provável que, nessa imagem, o caminho seja a variável de ambiente, e que o
+  PutBucketCors da restrição 5 sirva só para o S3 em produção. Deixei isso
+  escrito como expectativa, não como fato verificado.
+
+  Encontrei uma coisa fora do que você pediu e não registrei: pela mesma
+  documentação, o MinIO expira sozinho uploads multipart abandonados depois de
+  24h (MINIO_API_STALE_UPLOADS_EXPIRY). Isso cobre em parte as "partes órfãs"
+  citadas nos Cons do TD-03, ao menos no dev. Se quiser, mostro o diff para
+  incluir isso no TD-03.
+
+✻ Churned for 44s · done 3:07 PM
+
+❯ Sim, inclua na TD-03 o achado sobre MINIO_API_STALE_UPLOADS_EXPIRY (expiração 
+  automática de uploads multipart abandonados após 24h, conforme a              
+  documentação do MinIO), indicando que cobre as partes órfãs no ambiente de    
+  desenvolvimento e que em produção (S3) o equivalente é a regra de lifecycle   
+  AbortIncompleteMultipartUpload já citada na TD-02. Não altere os campos       
+  Decision. Mostre o diff antes de salvar.                                      
+
+● Diff proposto para os Cons da Option A do TD-03:
+
+  -Uploads abandonados deixam partes órfãs (precisa de lifecycle 
+  `AbortIncompleteMultipartUpload` e/ou limpeza de rascunhos parados).
+  +Uploads abandonados deixam partes órfãs. **No dev (MinIO)**, o servidor as 
+  expira sozinho: `MINIO_API_STALE_UPLOADS_EXPIRY` remove uploads multipart 
+  abandonados com mais de 24h (padrão), e a varredura roda a cada 
+  `MINIO_API_STALE_UPLOADS_CLEANUP_INTERVAL` (padrão 6h) (documentação do MinIO,
+  `docs/config/README.md`, subsistema `api`; documentação upstream, não 
+  verificada no fork da Chainguard). **Em produção (S3)**, o equivalente é a 
+  regra de lifecycle `AbortIncompleteMultipartUpload` já citada no TD-02. Nenhum
+  dos dois limpa o registro do vídeo em rascunho no banco, que continua 
+  precisando de limpeza própria de rascunhos parados.
+
+  Incluí dois pontos além do que você pediu:
+  - O intervalo de varredura de 6h. Sem ele, o texto daria a entender que a
+    limpeza ocorre exatamente às 24h.
+  - O aviso de que essas regras limpam só o storage, não o rascunho no banco.
+    Assim a "limpeza de rascunhos parados" que já estava no texto não se perde.
+
+  Se não quiser algum dos dois, recuse a edição e eu ajusto.
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Added 1 line, removed 1 line
+      128  ### Option A: S3 Multipart com URLs pré-assinadas por parte (o
+           rquestrado pela API)
+      129  - Fluxo: (1) cliente autenticado chama a API para iniciar. A A
+           PI valida o tamanho declarado (≤ 10GB, do project-plan) e o co
+           ntent-type (allowlist _(sugestão — sem origem normativa)_), **
+           cria o vídeo em rascunho**, chama `CreateMultipartUpload` e de
+           volve `videoId`, `uploadId`, `partSize` e `partCount`. (2) O c
+           liente pede URLs assinadas por lote de partes e faz `PUT` dire
+           to no storage, guardando cada `ETag`. (3) O cliente envia as `
+           ETag`s para a API, que faz `CompleteMultipartUpload`, confere
+           o tamanho com `HeadObject` e enfileira o job (TD-01). Retomada
+           : `ListParts` diz quais partes já subiram. Também há um endpoi
+           nt de abort.
+      130  - **Pros:** zero bytes pela API. Retomada e paralelismo nativo
+           s do S3. Funciona igual em MinIO e S3. A API decide quando pro
+           cessar, no `complete`, sem precisar de notificações de bucket.
+      131 -- **Cons:** 3–4 endpoints de orquestração. O cliente precisa c
+          -oordenar partes, o que é mais elaborado que um POST único (nes
+          -ta fase, os testes E2E fazem esse papel). Uploads abandonados 
+          -deixam partes órfãs (precisa de lifecycle `AbortIncompleteMult
+          -ipartUpload` e/ou limpeza de rascunhos parados). Um cliente br
+          -owser futuro exige CORS expondo `ETag` (TD-02).               
+      131 +- **Cons:** 3–4 endpoints de orquestração. O cliente precisa c
+          +oordenar partes, o que é mais elaborado que um POST único (nes
+          +ta fase, os testes E2E fazem esse papel). Uploads abandonados 
+          +deixam partes órfãs. **No dev (MinIO)**, o servidor as expira 
+          +sozinho: `MINIO_API_STALE_UPLOADS_EXPIRY` remove uploads multi
+          +part abandonados com mais de 24h (padrão), e a varredura roda 
+          +a cada `MINIO_API_STALE_UPLOADS_CLEANUP_INTERVAL` (padrão 6h) 
+          +(documentação do MinIO, `docs/config/README.md`, subsistema `a
+          +pi`; documentação upstream, não verificada no fork da Chaingua
+          +rd). **Em produção (S3)**, o equivalente é a regra de lifecycl
+          +e `AbortIncompleteMultipartUpload` já citada no TD-02. Nenhum 
+          +dos dois limpa o registro do vídeo em rascunho no banco, que c
+          +ontinua precisando de limpeza própria de rascunhos parados. Um
+          + cliente browser futuro exige CORS expondo `ETag` (TD-02).    
+      132  - **Libraries:** `@aws-sdk/client-s3`, `@aws-sdk/s3-request-pr
+           esigner`.
+      133 
+      134  ### Option B: Protocolo tus (servidor tus com store S3)
+
+● Salvei a mudança nos Cons da Option A do TD-03, exatamente como no diff. Os
+  campos Decision não mudaram e continuam _[pending]_.
+
+  O texto agora diz que:
+  - No dev (MinIO): MINIO_API_STALE_UPLOADS_EXPIRY limpa sozinho as partes órfãs
+    de uploads multipart abandonados há mais de 24h. A limpeza roda a cada 6h,
+    então pode levar um pouco mais que 24h.
+  - Em produção (S3): o equivalente é a regra de lifecycle
+    AbortIncompleteMultipartUpload, já citada no TD-02.
+  - Banco: nenhum dos dois apaga o vídeo em rascunho, que ainda precisa de
+    limpeza própria.
+
+  O comportamento do MinIO vem da documentação do projeto original. Não foi
+  testado na imagem da Chainguard.
+
+✻ Brewed for 15s · done 3:10 PM
+
+❯ Commite docs/decisions/technical-decisions-phase-03-videos.md (e              
+  _claude-sessions/14-baseline-fix-lint-migrations.txt, se ainda não estiver    
+  commitado) com a mensagem "docs: phase 03 technical decisions (research)" e   
+  faça push.                                                                    
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● The session file was already committed in 4168983, so only the decisions doc
+  goes in this commit.
+
+  Pushed to feature/phase-03-videos (ctrl+o to expand)
+
+● Fiz o commit e o push para origin/feature/phase-03-videos. Só entrou o
+  documento de decisões, porque a sessão
+  _claude-sessions/14-baseline-fix-lint-migrations.txt já estava no commit
+  anterior (4168983).
+
+  - Commit: b44200a docs: phase 03 technical decisions (research), com
+    docs/decisions/technical-decisions-phase-03-videos.md.
+  - Estado: a branch local está igual à remota e não há nada pendente.
+
+  Os 10 campos Decision continuam _[pending]_. Depois de preenchê-los, rode
+  /plan-context phase-03-videos com o diretório alvo
+  docs/phases/phase-03-videos/.
+✻ Cogitated for 18s · done 3:13 PM
