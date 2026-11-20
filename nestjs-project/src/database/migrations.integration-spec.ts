@@ -14,6 +14,34 @@ const MANAGED_TABLES = [
   'verification_tokens',
 ];
 
+/**
+ * Drops every table (including TypeORM's `migrations` table) and every enum
+ * type in the `public` schema, so the suite starts from an empty schema no
+ * matter what a previous (possibly aborted) run left behind. Extensions are
+ * kept on purpose: migrations depend on `uuid_generate_v4()`.
+ * Statements run sequentially to avoid lock contention between CASCADE drops.
+ */
+async function resetPublicSchema(dataSource: DataSource): Promise<void> {
+  const tables = await dataSource.query<{ tablename: string }[]>(
+    `SELECT tablename FROM pg_tables WHERE schemaname = 'public'`,
+  );
+  for (const { tablename } of tables) {
+    await dataSource.query(
+      `DROP TABLE IF EXISTS "public"."${tablename}" CASCADE`,
+    );
+  }
+
+  const enums = await dataSource.query<{ typname: string }[]>(
+    `SELECT t.typname
+       FROM pg_type t
+       JOIN pg_namespace n ON n.oid = t.typnamespace
+      WHERE n.nspname = 'public' AND t.typtype = 'e'`,
+  );
+  for (const { typname } of enums) {
+    await dataSource.query(`DROP TYPE IF EXISTS "public"."${typname}" CASCADE`);
+  }
+}
+
 describe('Database migrations (integration)', () => {
   let dataSource: DataSource;
 
@@ -30,20 +58,22 @@ describe('Database migrations (integration)', () => {
     );
 
     await dataSource.initialize();
-
-    await Promise.all([
-      ...MANAGED_TABLES.map((table) =>
-        dataSource.query(`DROP TABLE IF EXISTS "${table}" CASCADE`),
-      ),
-      dataSource.query(`DROP TABLE IF EXISTS "migrations" CASCADE`),
-    ]);
+    await resetPublicSchema(dataSource);
   });
 
   afterAll(async () => {
-    // The second test undoes the last migration, leaving token tables missing.
-    // Re-apply so the shared DB is fully migrated when subsequent suites run.
-    await dataSource.runMigrations();
-    await dataSource.destroy();
+    try {
+      // The second test undoes the last migration, leaving token tables missing.
+      // Re-apply so the shared DB is fully migrated when subsequent suites run.
+      if (dataSource?.isInitialized) {
+        await dataSource.runMigrations();
+      }
+    } finally {
+      // Always release the connection, otherwise Jest never exits.
+      if (dataSource?.isInitialized) {
+        await dataSource.destroy();
+      }
+    }
   });
 
   it('should apply all migrations and create all four tables', async () => {
