@@ -3,7 +3,7 @@ scope_type: phase
 related_phases: [3]
 status: pending
 date: 2026-11-20
-scope_description: "Upload e processamento de vídeos: tecnologia de fila, uso do object storage S3-compatível (buckets/chaves, endpoints interno/público, CORS), protocolo de upload de até 10GB direto ao storage com pré-cadastro em rascunho, execução do worker FFmpeg, URL única por vídeo, streaming/download e ciclo de status com política de retry."
+scope_description: "Upload e processamento de vídeos: tecnologia de fila, uso do object storage S3-compatível (buckets/chaves, endpoints interno/público, CORS), protocolo de upload de até 10GB direto ao storage com pré-cadastro em rascunho, execução do worker FFmpeg, URL única por vídeo, streaming/download e ciclo de status com política de retry; validação de formato do arquivo, destino de rascunhos abandonados e estratégia de testes de worker/fila/storage/FFmpeg."
 ---
 
 # Technical Decisions — Phase 03: Upload e Processamento de Vídeos
@@ -401,6 +401,108 @@ _Risco de infra (não reabre a decisão S3):_ a MinIO parou de publicar imagens 
 
 ---
 
+## TD-11: Formatos Aceitos e Validação do Arquivo de Vídeo
+
+**Scope:** Cross-layer
+
+**Capability:** Transversal — covers: "Upload de vídeos com suporte a arquivos de até 10GB sem impacto na performance", "Processamento automático do vídeo após upload (extração de duração e metadados)"
+
+**Context:** _Abrangência: Cross-layer — o endpoint de início do upload (TD-03) rejeita ou aceita o arquivo pelo que o cliente declara, e esse contrato de erro é consumido por qualquer cliente HTTP; o worker faz a validação real. Fecha a MD-1 da validação da Fase 03. Depende do TD-03, do TD-05 e do TD-10._ Com o upload direto ao storage (TD-03 Option A), a API **nunca vê os bytes**: no início ela só conhece o que o cliente declara (nome, `Content-Type`, tamanho). O `Content-Type` declarado não é confiável, porque qualquer cliente pode mentir. Só o `ffprobe` no worker sabe se o objeto tem de fato um stream de vídeo decodificável. É preciso definir **onde cada validação acontece** e o que acontece com um arquivo que passa na primeira e falha na segunda.
+
+**Options:**
+
+### Option A: Duas camadas — allowlist declarada no início + `ffprobe` como validação real no worker
+- **No início (API):** allowlist de `Content-Type` declarado (ex.: `video/mp4`, `video/quicktime`, `video/webm`, `video/x-matroska` _(sugestão — sem origem normativa)_) e tamanho ≤ 10GB (TD-03). Se falhar, o endpoint responde 4xx com código de domínio no envelope de `phase-02-auth/TD-07`, **sem criar rascunho** nem multipart. O `Content-Type` vai para o `CreateMultipartUpload`, e o objeto o carrega ao ser servido (TD-08). **No worker:** `ffprobe` (TD-05). Saída sem nenhum stream `codec_type: video`, ou erro de parse ou demuxer, vira **erro irrecuperável** (`UnrecoverableError`, TD-10) e o vídeo passa a `failed` (TD-09) na primeira tentativa, sem retries.
+- **Pros:** rejeição barata e imediata do caso comum (o usuário escolheu um PDF) sem gastar upload de 10GB. A validação autoritativa fica em um único lugar, o mesmo que já lê o arquivo. Nenhum byte extra lido pela API. Usa o caminho de falha do TD-10 sem código novo.
+- **Cons:** um arquivo com `Content-Type` falso só é detectado depois do upload completo e do enfileiramento (o usuário descobre o erro tarde, via status `failed`). Duas listas a manter coerentes: allowlist de MIME e o que o FFmpeg da imagem decodifica.
+- **Libraries:** nenhuma nova.
+
+### Option B: Só `ffprobe` no worker (sem allowlist no início)
+- A API aceita qualquer `Content-Type` dentro do limite de tamanho e cria o rascunho. Toda validação de formato acontece no worker, com o mesmo caminho irrecuperável → `failed` da Option A.
+- **Pros:** uma única regra, sem lista de MIME a manter. Aceita qualquer formato que o FFmpeg leia, mesmo com MIME exótico ou genérico (`application/octet-stream`).
+- **Cons:** um arquivo obviamente errado ocupa upload, storage, um job e um rascunho até falhar. Mais objetos e rascunhos inválidos a limpar (ver TD-12). O contrato da API não dá feedback imediato a nenhum cliente.
+- **Libraries:** nenhuma nova.
+
+### Option C: Três camadas — Option A + verificação de magic bytes no `complete`
+- Igual à A, mas no `complete` do multipart (TD-03), antes de enfileirar, a API faz um `GetObject` com `Range: bytes=0-4095` _(sugestão — sem origem normativa)_ e confere a assinatura do container (ex.: caixa `ftyp` do MP4/MOV, EBML do WebM/MKV). Se não bater, responde 4xx, marca `failed` e não enfileira.
+- **Pros:** detecta `Content-Type` falso antes de ocupar a fila e o worker, com custo de rede de poucos KB.
+- **Cons:** reimplementa parcialmente o que o `ffprobe` faz (uma lista de assinaturas própria). Magic bytes corretos não garantem um vídeo decodificável, então o `ffprobe` continua obrigatório: a camada é redundante para o critério de aceite. A lib usual de detecção (`file-type`) é ESM-only (ver a nota sobre ESM-only acima; formato não conferido nesta pesquisa), o que empurra para uma lista manual.
+- **Libraries:** nenhuma (lista manual de assinaturas) ou `file-type` (ESM-only).
+
+**Recommendation:** **Option A** — a allowlist declarada barra o erro honesto sem custo, e o `ffprobe` é a única validação que realmente responde "é um vídeo legível?". Ele já roda no worker (TD-05) e já tem o caminho de falha definitiva (TD-10 → `failed` do TD-09). A camada de magic bytes da Option C só antecipa o caso do cliente que mente, ao preço de uma lista de assinaturas paralela, e não substitui o `ffprobe`.
+
+**Decision:** _[pending]_
+
+---
+
+## TD-12: Uploads Abandonados — Destino do Rascunho no Banco
+
+**Scope:** Cross-layer
+
+**Capability:** Pré-cadastro automático do vídeo como rascunho ao iniciar o upload
+
+**Context:** _Abrangência: Cross-layer — o endpoint de abort é parte do contrato de upload consumido pelo cliente (testes E2E nesta fase, frontend no futuro); a remoção acontece no banco (backend). Fecha a MD-2 da validação da Fase 03. Depende do TD-03 e do TD-09._ O pré-cadastro cria o vídeo `draft` (TD-09) **antes** de o upload terminar. As partes órfãs no **storage** já estão cobertas: `MINIO_API_STALE_UPLOADS_EXPIRY` no dev e a regra de lifecycle `AbortIncompleteMultipartUpload` em produção (TD-02/TD-03). Nada disso toca no **registro do rascunho no banco**, que fica `draft` para sempre se o cliente desistir ou sumir. Também é preciso decidir se a limpeza **automática** de rascunhos parados entra nesta fase. **Nenhum bullet da Fase 03 a exige**: o capability gate só cobre o pré-cadastro, e a limpeza automática seria extrapolação sem um bullet que a justifique.
+
+**Options:**
+
+### Option A: Endpoint de abort explícito que remove o rascunho + limpeza automática adiada
+- `DELETE` (ou `POST .../abort`) no upload do vídeo, só pelo dono e só com status `draft`. A API chama `AbortMultipartUpload` e **remove o registro do rascunho** (hard delete: não existe estado editorial a preservar, e o TD-09 não tem estado `aborted`). É idempotente: abortar um vídeo já removido responde 404 de domínio, e abortar um vídeo que não está mais `draft` responde 409. Um rascunho abandonado **sem** abort (cliente sumiu) continua `draft` no banco. A limpeza automática fica registrada como **capability adiada** (`Non-UI / Deferred Capabilities`, via `/plan-resolve`) para a fase de gerenciamento de vídeos (Fase 04) ou uma task própria.
+- **Pros:** cumpre o pré-cadastro sem lixo no caminho comum (desistência explícita). Usa o endpoint de abort já previsto no fluxo do TD-03 Option A. Nada fora do capability gate. Sem novo estado no enum do TD-09.
+- **Cons:** rascunhos de clientes que somem ficam acumulados até a fase que trouxer a limpeza. O painel da Fase 04 precisa saber exibir ou ocultar `draft` antigos.
+- **Libraries:** `@aws-sdk/client-s3` (`AbortMultipartUpload`, já no TD-03).
+
+### Option B: Option A + job agendado de limpeza de rascunhos parados nesta fase
+- Além do abort, um job repetível na fila (job schedulers do BullMQ, rodando no worker do TD-04, sem `@nestjs/schedule`) remove rascunhos `draft` com mais de N horas (ex.: 24h, alinhado ao padrão do `MINIO_API_STALE_UPLOADS_EXPIRY` _(sugestão — sem origem normativa)_) e aborta o multipart correspondente.
+- **Pros:** banco limpo sem depender do cliente. Reaproveita a fila e o worker já decididos. O mesmo N do storage evita um rascunho apontando para partes já expiradas.
+- **Cons:** **sem bullet da Fase 03 que o justifique** (fere o capability gate). Exige uma regra de "parado" que pode apagar uploads lentos legítimos de 10GB: o N precisa considerar a retomada (TD-03). Mais um job e mais testes nesta fase.
+- **Libraries:** as da fila (TD-01).
+
+### Option C: Sem abort — rascunho permanece até a gestão de vídeos da Fase 04
+- A Fase 03 não expõe abort. O usuário que desiste simplesmente para. O rascunho e o multipart ficam até a expiração do storage, e o registro fica até a exclusão de vídeo da Fase 04.
+- **Pros:** menos um endpoint nesta fase.
+- **Cons:** todo upload desistido vira lixo garantido no banco. O cliente não tem como liberar o multipart antes da expiração. Contradiz o fluxo do TD-03 Option A, que já cita o abort.
+- **Libraries:** nenhuma.
+
+**Recommendation:** **Option A** — fecha o caminho comum (desistência explícita) dentro do bullet de pré-cadastro, sem inventar estado no TD-09 nem escopo fora do capability gate. A limpeza automática (Option B) é uma decisão legítima, mas pertence à fase que tiver um bullet que a justifique. Registrá-la como capability adiada mantém o débito visível em vez de silencioso.
+
+**Decision:** _[pending]_
+
+---
+
+## TD-13: Estratégia de Testes de Worker, Fila, Storage e FFmpeg
+
+**Scope:** Backend
+
+**Capability:** Transversal — covers: "Serviço de armazenamento de arquivos (vídeos e thumbnails)", "Serviço de processamento em segundo plano (filas)", "Processamento automático do vídeo após upload (extração de duração e metadados)", "Geração automática de thumbnail a partir de um frame do vídeo"
+
+**Context:** _Abrangência: Backend + infra de testes (imagem do `nestjs-api` com FFmpeg, isolamento de Redis e MinIO compartilhados). Fecha a MD-3 da validação da Fase 03. Depende do TD-01, TD-02, TD-04, TD-05 e TD-06._ O testing guide (`artifacts/future-types.md`) só orienta "Processor com lógica: Unit + Integration (DB/storage reais)" e "Service com side-effect (storage): Integration com serviço real ou adapter local". Ele não cobre FFmpeg, como o E2E espera o worker, nem o isolamento da fila. **Restrições do desafio:** "Não mocke o que dá para testar de verdade com a infra do Compose" e "fila, worker e storage precisam ser exercitados pelos testes". **Fatos do repositório:** os testes rodam **dentro do container `nestjs-api`** (`Dockerfile.dev` = `node:25.6.0-slim`, **sem FFmpeg**). Embora o script `npm test` não passe `--runInBand`, a suíte **não roda integrações em paralelo na prática**: os testes de integração compartilham o mesmo Postgres (o `migrations.integration-spec.ts` apaga e recria o schema), e rodar sem `--runInBand` gerou 37 falhas na baseline desta fase (informado na sessão de 2026-11-20). A execução obrigatória é `npm test -- --runInBand` (registrado em `docs/phases/phase-02-auth/progress.md`: "Tests require --runInBand to avoid parallel FK violations between suites sharing the same DB", e no `README.md`: "Testes de integração/e2e rodam com `--runInBand`"). Já existe o precedente de serviço real do Compose em teste: o Mailpit (`src/test/mailpit.ts`, `mail.service.integration-spec.ts`). A doc do BullMQ descreve `job.waitUntilFinished(queueEvents)` como "conveniência de teste no Node.js" (context7, `/taskforcesh/bullmq` v5.81.5). **Definition of Done desta fase:** o critério "a suíte completa passa" do `CLAUDE.md` é verificado com `npm test -- --runInBand`.
+
+**Options:**
+
+### Option A: Infra real do Compose + worker instanciado no processo do teste
+- **Unit (`*.spec.ts`):** só ramos de lógica pura. Mock de `child_process` restrito ao `FfmpegService` (parse do JSON, timeout, stderr, exit code ≠ 0) e à classificação de erro do processor (transitório vs `UnrecoverableError`, TD-10). **Integration (`*.integration-spec.ts`):** Redis, MinIO e Postgres **reais** do Compose. `FfmpegService` com **FFmpeg real** sobre uma fixture pequena gerada com `ffmpeg -f lavfi -i testsrc=duration=2:size=320x240:rate=10` _(parâmetros: sugestão — sem origem normativa)_, mais uma fixture "não é vídeo" (texto) para o caminho `failed`. O processor é chamado com `process(job)` direto, contra objeto real no MinIO e linha real no banco. **E2E (`*.e2e-spec.ts`):** sobe `AppModule` (HTTP via supertest) **e** o `WorkerModule` (TD-04) no mesmo processo Jest. O fluxo completo (init → PUT das partes nas URLs assinadas → complete) roda contra o MinIO real, e o teste aguarda com `job.waitUntilFinished(queueEvents, timeout)` ou polling do status no banco, depois afirma `ready`, a duração e a thumbnail no storage. **Isolamento:** contra o container `video-worker` do Compose, que fica rodando com a config de dev. Os testes usam `prefix` do BullMQ e bucket (ou prefixo de chave) próprios de teste, para que esse worker não consuma jobs do teste nem os testes poluam os objetos de dev. Como a suíte roda serializada (`--runInBand`), um prefixo fixo de teste basta. Sufixar com `JEST_WORKER_ID` seria opcional, só se um dia a suíte passar a rodar em paralelo. **Imagem:** `ffmpeg` instalado via apt no `Dockerfile.dev`, a mesma imagem que serve a API e o worker (TD-04).
+- **Pros:** cumpre as duas restrições do desafio: fila, worker, storage e FFmpeg exercitados de verdade, mock só em unit. O E2E é determinístico (o worker é do mesmo build do teste, sem depender de outro container estar de pé e atualizado). A fixture gerada por `lavfi` dispensa binário commitado e prova que o FFmpeg da imagem funciona. Segue o precedente do Mailpit.
+- **Cons:** a imagem da API ganha o FFmpeg, mesmo sem usá-lo em runtime (cerca de 100MB+ no slim, _estimativa não medida_). E2E mais lentos (processamento real) e sensíveis a timeout. O processo de teste acumula conexões Redis (Queue, Worker, QueueEvents) que precisam de `close()` no `afterAll` para o Jest encerrar.
+- **Libraries:** as da fila e do storage (TD-01, TD-02). Nenhuma lib de teste nova.
+
+### Option B: Infra real + E2E caixa-preta contra o container `video-worker`
+- Unit e integration como na Option A. O E2E **não** instancia o worker: só faz as chamadas HTTP e faz polling do status do vídeo pela API ou pelo banco até `ready`/`failed`, contando que o serviço `video-worker` do Compose processe o job. O FFmpeg só precisa estar na imagem do worker, mas os testes de integração do processor/FFmpeg rodam no `nestjs-api`, que ainda precisaria dele.
+- **Pros:** é o teste mais fiel à topologia real (dois containers, mesma fila). Não exercita o código do worker fora do seu entrypoint.
+- **Cons:** o teste depende de outro container estar rodando, saudável e com o código atual (volume e watch do worker). O worker do Compose usa o prefixo de dev, então isolar exige um segundo worker de teste ou trocar a env do container. Falhas viram timeouts opacos. Não elimina o FFmpeg no `nestjs-api` se as integrações do processor rodarem lá.
+- **Libraries:** as mesmas.
+
+### Option C: Testcontainers para Redis e MinIO por suíte
+- Cada suíte de integração/E2E sobe seus próprios containers Redis e MinIO efêmeros (`testcontainers`), e o FFmpeg é real como na Option A.
+- **Pros:** isolamento total entre suítes, sem prefixos nem limpeza manual.
+- **Cons:** os testes já rodam **dentro** de um container: Testcontainers exige o socket do Docker montado no `nestjs-api` (Docker-out-of-Docker), com impacto de segurança e de setup. Diverge da regra do projeto ("connect to the Docker `db` service") e do precedente do Mailpit. Startup lento por suíte. Mais uma dependência de dev.
+- **Libraries:** `testcontainers`, `@testcontainers/redis` (versões não conferidas nesta pesquisa).
+
+**Recommendation:** **Option A** — é a que cumpre literalmente "não mocke o que dá para testar com o Compose" e "fila, worker e storage exercitados", mantendo o E2E determinístico: o worker sob teste é exatamente o código do build, aguardado pelo mecanismo que o próprio BullMQ indica para testes. Instalar o FFmpeg no `Dockerfile.dev` é inevitável em qualquer opção que rode a integração do processor dentro do `nestjs-api`, e unifica a imagem da API e do worker (TD-04). A Option B continua útil como smoke manual da topologia de dois containers, mas não como suíte automatizada.
+
+**Decision:** _[pending]_
+
+---
+
 ## Decisions Summary
 
 | ID | Scope | Decision | Recommendation | Choice |
@@ -415,3 +517,6 @@ _Risco de infra (não reabre a decisão S3):_ a MinIO parou de publicar imagens 
 | TD-08 | Cross-layer | Streaming e download | A — API autoriza e redireciona 302 para URL pré-assinada | _[pending]_ |
 | TD-09 | Cross-layer | Modelo de status do vídeo | D — eixo único `draft → processing → ready \| failed` (literal ao critério de aceite) | _[pending]_ |
 | TD-10 | Backend | Retry e falha final | A — retry nativo + irrecuperável + handler de falha final | _[pending]_ |
+| TD-11 | Cross-layer | Formatos aceitos e validação do arquivo | A — allowlist de `Content-Type` no início + `ffprobe` no worker (irrecuperável → `failed`) | _[pending]_ |
+| TD-12 | Cross-layer | Uploads abandonados — destino do rascunho | A — endpoint de abort que remove o rascunho; limpeza automática adiada | _[pending]_ |
+| TD-13 | Backend (+ infra de testes) | Estratégia de testes de worker, fila, storage e FFmpeg | A — Redis/MinIO/FFmpeg reais; worker no processo do teste; FFmpeg no `Dockerfile.dev` | _[pending]_ |
