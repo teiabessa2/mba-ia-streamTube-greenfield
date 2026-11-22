@@ -3,7 +3,7 @@ kind: phase
 name: phase-03-videos
 sources_mtime:
   docs/project-plan.md: "2026-11-17T11:04:44-03:00"
-  docs/decisions/technical-decisions-phase-03-videos.md: "2026-11-20T15:10:25-03:00"
+  docs/decisions/technical-decisions-phase-03-videos.md: "2026-11-20T17:19:28-03:00"
   docs/decisions/technical-decisions-openapi-docs-nestjs.md: "2026-11-17T11:04:44-03:00"
   docs/phases/phase-01-configuracao-base/context.md: "2026-11-17T11:04:44-03:00"
   docs/phases/phase-02-auth/context.md: "2026-11-17T11:04:44-03:00"
@@ -58,6 +58,9 @@ sources_mtime:
 | phase-03-videos/TD-08 | phase | Cross-layer | Streaming e Download | pending | — | — |
 | phase-03-videos/TD-09 | phase | Cross-layer | Modelo de Status do Vídeo | pending | — | — |
 | phase-03-videos/TD-10 | phase | Backend | Política de Retry e Falha Final do Processamento | pending | — | — |
+| phase-03-videos/TD-11 | phase | Cross-layer | Formatos Aceitos e Validação do Arquivo de Vídeo | pending | — | — |
+| phase-03-videos/TD-12 | phase | Cross-layer | Uploads Abandonados — Destino do Rascunho no Banco | pending | — | — |
+| phase-03-videos/TD-13 | phase | Backend | Estratégia de Testes de Worker, Fila, Storage e FFmpeg | pending | — | — |
 
 _Source files:_
 
@@ -67,12 +70,12 @@ _Source files:_
 
 | Capability (from project-plan.md) | Covered by |
 |-----------------------------------|------------|
-| Serviço de armazenamento de arquivos (vídeos e thumbnails) | phase-03-videos/TD-02 |
-| Serviço de processamento em segundo plano (filas) | phase-03-videos/TD-01, phase-03-videos/TD-04 |
-| Upload de vídeos com suporte a arquivos de até 10GB sem impacto na performance | phase-03-videos/TD-03 |
-| Pré-cadastro automático do vídeo como rascunho ao iniciar o upload | phase-03-videos/TD-03, phase-03-videos/TD-09 |
-| Processamento automático do vídeo após upload (extração de duração e metadados) | phase-03-videos/TD-04, phase-03-videos/TD-05, phase-03-videos/TD-06, phase-03-videos/TD-09, phase-03-videos/TD-10 |
-| Geração automática de thumbnail a partir de um frame do vídeo | phase-03-videos/TD-04, phase-03-videos/TD-05, phase-03-videos/TD-06 |
+| Serviço de armazenamento de arquivos (vídeos e thumbnails) | phase-03-videos/TD-02, phase-03-videos/TD-13 |
+| Serviço de processamento em segundo plano (filas) | phase-03-videos/TD-01, phase-03-videos/TD-04, phase-03-videos/TD-13 |
+| Upload de vídeos com suporte a arquivos de até 10GB sem impacto na performance | phase-03-videos/TD-03, phase-03-videos/TD-11 |
+| Pré-cadastro automático do vídeo como rascunho ao iniciar o upload | phase-03-videos/TD-03, phase-03-videos/TD-09, phase-03-videos/TD-12 |
+| Processamento automático do vídeo após upload (extração de duração e metadados) | phase-03-videos/TD-04, phase-03-videos/TD-05, phase-03-videos/TD-06, phase-03-videos/TD-09, phase-03-videos/TD-10, phase-03-videos/TD-11, phase-03-videos/TD-13 |
+| Geração automática de thumbnail a partir de um frame do vídeo | phase-03-videos/TD-04, phase-03-videos/TD-05, phase-03-videos/TD-06, phase-03-videos/TD-13 |
 | URL única por vídeo, sem conflito com outros vídeos | phase-03-videos/TD-07 |
 | Reprodução via streaming (sem necessidade de download completo) | phase-03-videos/TD-08 |
 | Download do vídeo pelo usuário | phase-03-videos/TD-08 |
