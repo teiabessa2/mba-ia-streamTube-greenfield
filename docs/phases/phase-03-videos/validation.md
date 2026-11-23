@@ -1,11 +1,11 @@
 ---
 kind: phase
 name: phase-03-videos
-status: dirty
+status: clean
 issue_count: 0
 sources_mtime:
-  docs/phases/phase-03-videos/context.md: "2026-11-22T20:01:54-03:00"
-  docs/decisions/technical-decisions-phase-03-videos.md: "2026-11-20T17:19:28-03:00"
+  docs/phases/phase-03-videos/context.md: "2026-11-23T16:12:29-03:00"
+  docs/decisions/technical-decisions-phase-03-videos.md: "2026-11-23T15:41:23-03:00"
 issues:
   - id: AMB-1
     status: resolved
@@ -92,7 +92,7 @@ advisories: []
 
 ### Inconsistencies
 
-_None._ _(todos os `Capability:` dos TDs citam bullets presentes em `## Scope`; nenhum TD com `Scope: Frontend`, portanto a checagem de órfão não se aplica; sem TDs decididos para conflitar entre si)_
+_None._ _(13 TDs decididos sem escolhas mutuamente exclusivas: TD-02 (cliente interno + cliente de assinatura) sustenta TD-03/TD-06/TD-08; TD-10 `UnrecoverableError` → `failed` do TD-09, coerente com TD-11; abort do TD-12 remove o `draft` do TD-09; todos os `Capability:` citam bullets de `## Scope`; nenhum TD `Scope: Frontend`)_
 
 ### Ambiguities
 
@@ -108,7 +108,7 @@ _None._
 
 ### Inherited Constraint Conflicts
 
-_None._ _(nenhum TD da fase está decidido ainda — a checagem será refeita após a resolução dos OQs)_
+_None._ _(env S3/fila via Joi + `registerAs` (phase-01 TD-02/TD-03); erros 404 no envelope de phase-02-auth/TD-07; storage real no teste alinhado ao testing guide (TD-13); colunas novas via migration, compatível com `synchronize: false`)_
 
 ### Unresolved Open Questions
 
