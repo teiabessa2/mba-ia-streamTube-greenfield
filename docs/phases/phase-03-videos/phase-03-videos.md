@@ -144,7 +144,7 @@ Entregar o upload de vídeos de até 10GB direto ao object storage com pré-cada
 ### SI-03.5 — Endpoint POST /videos (início do upload + pré-cadastro em rascunho)
 
 **Route:** POST /videos
-**Test Specs:** _pending /plan-test-specs_
+**Test Specs:** see `nestjs-project/specs/videos-initiate-upload.plan.md`
 **Authorization:** Authenticated (vira dono do rascunho criado) — per `### Authorization Matrix`
 
 **Description:** Inicia o upload: valida o arquivo declarado, cria o rascunho (`status = draft`) no canal do usuário e abre o S3 Multipart Upload, sem que a API receba nenhum byte do vídeo.
@@ -183,7 +183,7 @@ Entregar o upload de vídeos de até 10GB direto ao object storage com pré-cada
 ### SI-03.6 — Endpoints de partes do upload (gerar URLs + listar para retomar)
 
 **Route:** POST /videos/:id/upload/parts · GET /videos/:id/upload/parts
-**Test Specs:** _pending /plan-test-specs_
+**Test Specs:** see `nestjs-project/specs/videos-upload-parts.plan.md`
 **Authorization:** Owner (não-dono autenticado → 404) — per `### Authorization Matrix`
 
 **Description:** Entrega ao dono, em lote, as URLs PUT pré-assinadas das partes (também usadas para renovar URLs expiradas) e lista as partes já recebidas pelo storage para retomar um upload interrompido.
@@ -220,7 +220,7 @@ Entregar o upload de vídeos de até 10GB direto ao object storage com pré-cada
 ### SI-03.7 — Endpoint POST /videos/:id/upload/complete + produtor da fila
 
 **Route:** POST /videos/:id/upload/complete
-**Test Specs:** _pending /plan-test-specs_
+**Test Specs:** see `nestjs-project/specs/videos-upload-complete.plan.md`
 **Authorization:** Owner (não-dono autenticado → 404) — per `### Authorization Matrix`
 
 **Description:** Conclui o multipart, confere o tamanho real do objeto contra o declarado, passa o vídeo para `processing` e publica o job `process-video` — o gatilho do processamento automático.
@@ -259,7 +259,7 @@ Entregar o upload de vídeos de até 10GB direto ao object storage com pré-cada
 ### SI-03.8 — Endpoint DELETE /videos/:id/upload (abort do rascunho)
 
 **Route:** DELETE /videos/:id/upload
-**Test Specs:** _pending /plan-test-specs_
+**Test Specs:** see `nestjs-project/specs/videos-upload-abort.plan.md`
 **Authorization:** Owner (não-dono autenticado → 404) — per `### Authorization Matrix`
 
 **Description:** Fecha o caminho de desistência explícita: descarta as partes já enviadas no storage e remove a linha do rascunho, sem criar estado novo no enum de status.
@@ -383,7 +383,7 @@ Entregar o upload de vídeos de até 10GB direto ao object storage com pré-cada
 ### SI-03.12 — Endpoint GET /videos/:id (status e detalhe do próprio vídeo)
 
 **Route:** GET /videos/:id
-**Test Specs:** _pending /plan-test-specs_
+**Test Specs:** see `nestjs-project/specs/videos-get-owned.plan.md`
 **Authorization:** Owner (não-dono autenticado → 404) — per `### Authorization Matrix`
 
 **Description:** Permite ao dono acompanhar o ciclo `draft → processing → ready | failed` e ler os metadados extraídos e o thumbnail do próprio vídeo.
@@ -416,7 +416,7 @@ Entregar o upload de vídeos de até 10GB direto ao object storage com pré-cada
 ### SI-03.13 — Endpoints públicos de streaming e download (302 pré-assinado)
 
 **Route:** GET /videos/:publicId/stream · GET /videos/:publicId/download
-**Test Specs:** _pending /plan-test-specs_
+**Test Specs:** see `nestjs-project/specs/videos-playback.plan.md`
 **Authorization:** Public (`@Public()`), só para `status = ready` — demais status → 404 para qualquer chamador — per `### Authorization Matrix`
 
 **Description:** Entrega a reprodução por streaming (Range nativo do storage) e o download pela URL única do vídeo, redirecionando para uma URL GET pré-assinada, sem que a API trafegue os bytes.
