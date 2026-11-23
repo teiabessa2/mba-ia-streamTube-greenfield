@@ -2,20 +2,23 @@
 kind: phase
 name: phase-03-videos
 status: dirty
-issue_count: 16
+issue_count: 0
 sources_mtime:
   docs/phases/phase-03-videos/context.md: "2026-11-22T20:01:54-03:00"
   docs/decisions/technical-decisions-phase-03-videos.md: "2026-11-20T17:19:28-03:00"
 issues:
   - id: AMB-1
-    status: open
+    status: resolved
     summary: "'sem impacto na performance' no upload de 10GB não tem critério mensurável"
+    resolved_by: clarification
   - id: AMB-2
-    status: open
+    status: resolved
     summary: "Controle de acesso a streaming/download por status e autenticação indefinido"
+    resolved_by: clarification
   - id: AMB-3
-    status: open
+    status: resolved
     summary: "Conjunto de 'metadados' a extrair e persistir no processamento não definido"
+    resolved_by: clarification
   - id: MD-1
     status: resolved
     summary: "Sem TD para formatos de vídeo aceitos e estratégia de validação do arquivo"
@@ -29,44 +32,57 @@ issues:
     summary: "Sem estratégia de teste para worker, fila, storage e FFmpeg (fora do guia)"
     resolved_by: phase-03-videos/TD-13
   - id: OQ-1
-    status: open
+    status: resolved
     summary: "TD-01 pending — Tecnologia de Fila (Message Queue)"
+    resolved_by: phase-03-videos/TD-01
   - id: OQ-2
-    status: open
+    status: resolved
     summary: "TD-02 pending — Uso do Object Storage (buckets/chaves, endpoints, CORS)"
+    resolved_by: phase-03-videos/TD-02
   - id: OQ-3
-    status: open
+    status: resolved
     summary: "TD-03 pending — Protocolo de upload de até 10GB + pré-cadastro em rascunho"
+    resolved_by: phase-03-videos/TD-03
   - id: OQ-4
-    status: open
+    status: resolved
     summary: "TD-04 pending — Execução do Video Worker (processo, container, entrypoint)"
+    resolved_by: phase-03-videos/TD-04
   - id: OQ-5
-    status: open
+    status: resolved
     summary: "TD-05 pending — Integração com FFmpeg/ffprobe (spawn direto vs wrapper)"
+    resolved_by: phase-03-videos/TD-05
   - id: OQ-6
-    status: open
+    status: resolved
     summary: "TD-06 pending — Acesso do worker ao arquivo (download vs URL pré-assinada)"
+    resolved_by: phase-03-videos/TD-06
   - id: OQ-7
-    status: open
+    status: resolved
     summary: "TD-07 pending — Estratégia de URL única por vídeo"
+    resolved_by: phase-03-videos/TD-07
   - id: OQ-8
-    status: open
+    status: resolved
     summary: "TD-08 pending — Streaming e download"
+    resolved_by: phase-03-videos/TD-08
   - id: OQ-9
-    status: open
+    status: resolved
     summary: "TD-09 pending — Modelo de status do vídeo"
+    resolved_by: phase-03-videos/TD-09
   - id: OQ-10
-    status: open
+    status: resolved
     summary: "TD-10 pending — Política de retry e falha final do processamento"
+    resolved_by: phase-03-videos/TD-10
   - id: OQ-11
-    status: open
+    status: resolved
     summary: "TD-11 pending — Formatos aceitos e validação do arquivo de vídeo"
+    resolved_by: phase-03-videos/TD-11
   - id: OQ-12
-    status: open
+    status: resolved
     summary: "TD-12 pending — Uploads abandonados: destino do rascunho no banco"
+    resolved_by: phase-03-videos/TD-12
   - id: OQ-13
-    status: open
+    status: resolved
     summary: "TD-13 pending — Estratégia de testes de worker, fila, storage e FFmpeg"
+    resolved_by: phase-03-videos/TD-13
 advisories: []
 ---
 
@@ -80,9 +96,7 @@ _None._ _(todos os `Capability:` dos TDs citam bullets presentes em `## Scope`; 
 
 ### Ambiguities
 
-- **AMB-1** — A capability "Upload de vídeos com suporte a arquivos de até 10GB sem impacto na performance" não define o que significa "sem impacto na performance": memória da API limitada (sem buffer do arquivo em RAM/disco do container)? Throughput mínimo? Número de uploads concorrentes suportados? Retomada após queda de conexão? O deliverable diz apenas "upload de até 10GB funcional". Explicit choice: fixar o critério de aceite verificável (ex.: "a API nunca recebe os bytes do vídeo" / "consumo de memória da API constante independente do tamanho" / "upload retomável") — pode ser registrado como parâmetro do TD-03 ao decidi-lo, ou como clarificação no `project-plan.md`.
-- **AMB-2** — "Reprodução via streaming" e "Download do vídeo pelo usuário" não definem **quem** pode acessar e **em qual status**. O projeto diz que anônimos assistem livremente, mas nesta fase todo vídeo nasce como rascunho e a publicação pertence à Fase 04 ("Gerenciamento de Vídeos e Canal"). Perguntas em aberto: (a) download exige autenticação ou é livre como o streaming? (b) vídeos em rascunho/processando podem ser transmitidos/baixados — só pelo dono? (c) a fronteira com a Fase 04 (visibilidade/publicação) fica onde? Explicit choice: definir a regra de acesso para esta fase (provavelmente via TD-08 + TD-09) e declarar explicitamente o que fica para a Fase 04.
-- **AMB-3** — "Processamento automático do vídeo após upload (extração de duração e metadados)" não lista quais metadados são extraídos e persistidos (resolução, codec, bitrate, tamanho, formato de container, fps?). Isso define colunas da entidade de vídeo e o contrato da API (TDs Cross-layer). Explicit choice: enumerar o conjunto mínimo de metadados persistidos nesta fase (ao decidir TD-05/TD-09/TD-11 ou como clarificação de escopo).
+_None._
 
 ### Missing Decisions
 
@@ -98,19 +112,7 @@ _None._ _(nenhum TD da fase está decidido ainda — a checagem será refeita ap
 
 ### Unresolved Open Questions
 
-- **OQ-1** — TD-01 pending — Tecnologia de Fila (Message Queue). Resolution: fill the **Decision:** field of TD-01 in `docs/decisions/technical-decisions-phase-03-videos.md`, then re-run `/plan-validate phase-03-videos`.
-- **OQ-2** — TD-02 pending — Uso do Object Storage — Buckets/Chaves, Endpoint Interno vs Público e CORS. Resolution: fill the **Decision:** field of TD-02 in `docs/decisions/technical-decisions-phase-03-videos.md`, then re-run `/plan-validate phase-03-videos`.
-- **OQ-3** — TD-03 pending — Protocolo de Upload de até 10GB + Pré-cadastro em Rascunho. Resolution: fill the **Decision:** field of TD-03 in `docs/decisions/technical-decisions-phase-03-videos.md`, then re-run `/plan-validate phase-03-videos`.
-- **OQ-4** — TD-04 pending — Execução do Video Worker (processo, container e entrypoint). Resolution: fill the **Decision:** field of TD-04 in `docs/decisions/technical-decisions-phase-03-videos.md`, then re-run `/plan-validate phase-03-videos`.
-- **OQ-5** — TD-05 pending — Integração com FFmpeg/ffprobe (spawn direto vs wrapper). Resolution: fill the **Decision:** field of TD-05 in `docs/decisions/technical-decisions-phase-03-videos.md`, then re-run `/plan-validate phase-03-videos`.
-- **OQ-6** — TD-06 pending — Acesso do Worker ao Arquivo (download completo vs leitura por URL pré-assinada). Resolution: fill the **Decision:** field of TD-06 in `docs/decisions/technical-decisions-phase-03-videos.md`, then re-run `/plan-validate phase-03-videos`.
-- **OQ-7** — TD-07 pending — Estratégia de URL Única por Vídeo. Resolution: fill the **Decision:** field of TD-07 in `docs/decisions/technical-decisions-phase-03-videos.md`, then re-run `/plan-validate phase-03-videos`.
-- **OQ-8** — TD-08 pending — Streaming e Download. Resolution: fill the **Decision:** field of TD-08 in `docs/decisions/technical-decisions-phase-03-videos.md`, then re-run `/plan-validate phase-03-videos`.
-- **OQ-9** — TD-09 pending — Modelo de Status do Vídeo. Resolution: fill the **Decision:** field of TD-09 in `docs/decisions/technical-decisions-phase-03-videos.md`, then re-run `/plan-validate phase-03-videos`.
-- **OQ-10** — TD-10 pending — Política de Retry e Falha Final do Processamento. Resolution: fill the **Decision:** field of TD-10 in `docs/decisions/technical-decisions-phase-03-videos.md`, then re-run `/plan-validate phase-03-videos`.
-- **OQ-11** — TD-11 pending — Formatos Aceitos e Validação do Arquivo de Vídeo. Resolution: fill the **Decision:** field of TD-11 in `docs/decisions/technical-decisions-phase-03-videos.md`, then re-run `/plan-validate phase-03-videos`.
-- **OQ-12** — TD-12 pending — Uploads Abandonados — Destino do Rascunho no Banco. Resolution: fill the **Decision:** field of TD-12 in `docs/decisions/technical-decisions-phase-03-videos.md`, then re-run `/plan-validate phase-03-videos`.
-- **OQ-13** — TD-13 pending — Estratégia de Testes de Worker, Fila, Storage e FFmpeg. Resolution: fill the **Decision:** field of TD-13 in `docs/decisions/technical-decisions-phase-03-videos.md`, then re-run `/plan-validate phase-03-videos`.
+_None._
 
 ### UI Coverage Gaps
 
@@ -121,3 +123,19 @@ _None._ _(fase sem escopo de UI — `## UI Inventory` ausente; `next-frontend/` 
 - **MD-1** _(resolved_by phase-03-videos/TD-11)_ — Sem TD para formatos de vídeo aceitos e estratégia de validação do arquivo. Coberto pelo TD-11 adicionado na rodada 2 de research (ainda pending → acompanhado em OQ-11).
 - **MD-2** _(resolved_by phase-03-videos/TD-12)_ — Sem TD para ciclo de vida de uploads abandonados / rascunhos órfãos. Coberto pelo TD-12 adicionado na rodada 2 de research (ainda pending → acompanhado em OQ-12).
 - **MD-3** _(resolved_by phase-03-videos/TD-13)_ — Sem estratégia de teste para worker, fila, storage e FFmpeg (fora do guia). Coberto pelo TD-13 adicionado na rodada 2 de research (ainda pending → acompanhado em OQ-13).
+- **AMB-1** _(resolved_by clarification)_ — 'sem impacto na performance' no upload de 10GB não tem critério mensurável. Clarificação: Critério de aceite de "sem impacto na performance": a API nunca recebe os bytes (só JSON; partes direto ao storage por URL pré-assinada); tamanho declarado validado no início (máx. 10 × 1024³ bytes, acima disso rejeita sem criar rascunho); upload retomável (`ListParts`); os três pontos cobertos por testes. Registrado como Revision em `phase-03-videos/TD-03`.
+- **AMB-2** _(resolved_by clarification)_ — Controle de acesso a streaming/download por status e autenticação indefinido. Clarificação: Stream e download públicos (`@Public()`), só com status `ready`; demais status → 404 sem revelar existência. Status/detalhe do próprio vídeo exige login + dono do canal. Visibilidade/publicação ficam para a Fase 04. Registrado como Revision em `phase-03-videos/TD-08`.
+- **AMB-3** _(resolved_by clarification)_ — Conjunto de 'metadados' a extrair e persistir no processamento não definido. Clarificação: `duration_seconds` em coluna própria + coluna `metadata` (jsonb) com `width`, `height`, `videoCodec`, `audioCodec` (opcional), `bitrate`, `formatName`, `sizeBytes`. Registrado como Revision em `phase-03-videos/TD-05`.
+- **OQ-1** _(resolved_by phase-03-videos/TD-01)_ — TD-01 pending — Tecnologia de Fila (Message Queue). Decidido: A.
+- **OQ-2** _(resolved_by phase-03-videos/TD-02)_ — TD-02 pending — Uso do Object Storage (buckets/chaves, endpoints, CORS). Decidido: A.
+- **OQ-3** _(resolved_by phase-03-videos/TD-03)_ — TD-03 pending — Protocolo de upload de até 10GB + pré-cadastro em rascunho. Decidido: A.
+- **OQ-4** _(resolved_by phase-03-videos/TD-04)_ — TD-04 pending — Execução do Video Worker (processo, container, entrypoint). Decidido: A.
+- **OQ-5** _(resolved_by phase-03-videos/TD-05)_ — TD-05 pending — Integração com FFmpeg/ffprobe (spawn direto vs wrapper). Decidido: A.
+- **OQ-6** _(resolved_by phase-03-videos/TD-06)_ — TD-06 pending — Acesso do worker ao arquivo (download vs URL pré-assinada). Decidido: A.
+- **OQ-7** _(resolved_by phase-03-videos/TD-07)_ — TD-07 pending — Estratégia de URL única por vídeo. Decidido: A.
+- **OQ-8** _(resolved_by phase-03-videos/TD-08)_ — TD-08 pending — Streaming e download. Decidido: A.
+- **OQ-9** _(resolved_by phase-03-videos/TD-09)_ — TD-09 pending — Modelo de status do vídeo. Decidido: D.
+- **OQ-10** _(resolved_by phase-03-videos/TD-10)_ — TD-10 pending — Política de retry e falha final do processamento. Decidido: A.
+- **OQ-11** _(resolved_by phase-03-videos/TD-11)_ — TD-11 pending — Formatos aceitos e validação do arquivo de vídeo. Decidido: A.
+- **OQ-12** _(resolved_by phase-03-videos/TD-12)_ — TD-12 pending — Uploads abandonados: destino do rascunho no banco. Decidido: A.
+- **OQ-13** _(resolved_by phase-03-videos/TD-13)_ — TD-13 pending — Estratégia de testes de worker, fila, storage e FFmpeg. Decidido: A.

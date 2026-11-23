@@ -1,0 +1,253 @@
+ ▐▛███▛█   Claude Code v2.1.329
+▝▜██████▀  Opus 5.5 · Claude Pro
+ ▝▝   ▝▝   ~/mbaengsoft/mba-ia-streamTube-greenfield
+
+
+❯ /clear                                                                        
+
+❯ /plan-validate phase-03-videos Diretório da fase:                             
+docs/phases/phase-03-videos/. Responda em português.                            
+
+  Read 3 files, ran 2 shell commands (ctrl+o to expand)
+
+● Write(docs/phases/phase-03-videos/validation.md)
+  ⎿  Added 26 lines, removed 11 lines
+       4  status: dirty
+       5  issue_count: 16
+       6  sources_mtime:
+       7 -  docs/phases/phase-03-videos/context.md: "2026-11-20T16:24:33-
+         -03:00"                                                         
+       8 -  docs/decisions/technical-decisions-phase-03-videos.md: "2026-
+         -11-20T15:10:25-03:00"                                          
+       7 +  docs/phases/phase-03-videos/context.md: "2026-11-22T20:01:54-
+         +03:00"                                                         
+       8 +  docs/decisions/technical-decisions-phase-03-videos.md: "2026-
+         +11-20T17:19:28-03:00"                                          
+       9  issues:
+      10    - id: AMB-1
+      11      status: open
+     ...
+      17      status: open
+      18      summary: "Conjunto de 'metadados' a extrair e persistir no
+          processamento não definido"
+      19    - id: MD-1
+      20 -    status: open                                               
+      20 +    status: resolved                                           
+      21      summary: "Sem TD para formatos de vídeo aceitos e estratégi
+          a de validação do arquivo"
+      22 +    resolved_by: phase-03-videos/TD-11                         
+      23    - id: MD-2
+      23 -    status: open                                               
+      24 +    status: resolved                                           
+      25      summary: "Sem TD para ciclo de vida de uploads abandonados
+          / rascunhos órfãos"
+      26 +    resolved_by: phase-03-videos/TD-12                         
+      27    - id: MD-3
+      26 -    status: open                                               
+      28 +    status: resolved                                           
+      29      summary: "Sem estratégia de teste para worker, fila, storag
+          e e FFmpeg (fora do guia)"
+      30 +    resolved_by: phase-03-videos/TD-13                         
+      31    - id: OQ-1
+      32      status: open
+      33      summary: "TD-01 pending — Tecnologia de Fila (Message Queue
+          )"
+     ...
+      58    - id: OQ-10
+      59      status: open
+      60      summary: "TD-10 pending — Política de retry e falha final d
+          o processamento"
+      61 +  - id: OQ-11                                                  
+      62 +    status: open                                               
+      63 +    summary: "TD-11 pending — Formatos aceitos e validação do a
+         +rquivo de vídeo"                                               
+      64 +  - id: OQ-12                                                  
+      65 +    status: open                                               
+      66 +    summary: "TD-12 pending — Uploads abandonados: destino do r
+         +ascunho no banco"                                              
+      67 +  - id: OQ-13                                                  
+      68 +    status: open                                               
+      69 +    summary: "TD-13 pending — Estratégia de testes de worker, f
+         +ila, storage e FFmpeg"                                         
+      70  advisories: []
+      71  ---
+      72 
+     ...
+      76 
+      77  ### Inconsistencies
+      78 
+      67 -_None._                                                        
+      79 +_None._ _(todos os `Capability:` dos TDs citam bullets presente
+         +s em `## Scope`; nenhum TD com `Scope: Frontend`, portanto a ch
+         +ecagem de órfão não se aplica; sem TDs decididos para conflitar
+         + entre si)_                                                    
+      80 
+      81  ### Ambiguities
+      82 
+      83  - **AMB-1** — A capability "Upload de vídeos com suporte a arqu
+          ivos de até 10GB sem impacto na performance" não define o que s
+          ignifica "sem impacto na performance": memória da API limitada
+          (sem buffer do arquivo em RAM/disco do container)? Throughput m
+          ínimo? Número de uploads concorrentes suportados? Retomada após
+           queda de conexão? O deliverable diz apenas "upload de até 10GB
+           funcional". Explicit choice: fixar o critério de aceite verifi
+          cável (ex.: "a API nunca recebe os bytes do vídeo" / "consumo d
+          e memória da API constante independente do tamanho" / "upload r
+          etomável") — pode ser registrado como parâmetro do TD-03 ao dec
+          idi-lo, ou como clarificação no `project-plan.md`.
+      84  - **AMB-2** — "Reprodução via streaming" e "Download do vídeo p
+          elo usuário" não definem **quem** pode acessar e **em qual stat
+          us**. O projeto diz que anônimos assistem livremente, mas nesta
+           fase todo vídeo nasce como rascunho e a publicação pertence à
+          Fase 04 ("Gerenciamento de Vídeos e Canal"). Perguntas em abert
+          o: (a) download exige autenticação ou é livre como o streaming?
+           (b) vídeos em rascunho/processando podem ser transmitidos/baix
+          ados — só pelo dono? (c) a fronteira com a Fase 04 (visibilidad
+          e/publicação) fica onde? Explicit choice: definir a regra de ac
+          esso para esta fase (provavelmente via TD-08 + TD-09) e declara
+          r explicitamente o que fica para a Fase 04.
+      73 -- **AMB-3** — "Processamento automático do vídeo após upload (e
+         -xtração de duração e metadados)" não lista quais metadados são 
+         -extraídos e persistidos (resolução, codec, bitrate, tamanho, fo
+         -rmato de container, fps?). Isso define colunas da entidade de v
+         -ídeo e o contrato da API (TDs Cross-layer). Explicit choice: en
+         -umerar o conjunto mínimo de metadados persistidos nesta fase (a
+         -o decidir TD-05/TD-09 ou como clarificação de escopo).         
+      85 +- **AMB-3** — "Processamento automático do vídeo após upload (e
+         +xtração de duração e metadados)" não lista quais metadados são 
+         +extraídos e persistidos (resolução, codec, bitrate, tamanho, fo
+         +rmato de container, fps?). Isso define colunas da entidade de v
+         +ídeo e o contrato da API (TDs Cross-layer). Explicit choice: en
+         +umerar o conjunto mínimo de metadados persistidos nesta fase (a
+         +o decidir TD-05/TD-09/TD-11 ou como clarificação de escopo).   
+      86 
+      87  ### Missing Decisions
+      88 
+      77 -- **MD-1** — Nenhum TD no `## Decisions Index` decide **quais f
+         -ormatos de vídeo são aceitos** (containers/codecs, MIME types) 
+         -nem **como o arquivo é validado** (extensão/Content-Type declar
+         -ado no início do upload vs. magic bytes vs. rejeição tardia pel
+         -o `ffprobe` no worker), nem como um arquivo não-vídeo é tratado
+         - (status de falha? remoção do objeto?). Afeta "Upload de vídeos
+         -…" e "Processamento automático…". Explicit choice: run `/resear
+         -ch phase-03-videos` (ou `/decide`) para adicionar um TD cobrind
+         -o política de formatos aceitos e ponto de validação — ou confir
+         -mar que o TD-03/TD-10 já cobre isso em suas opções.            
+      78 -- **MD-2** — Nenhum TD decide o **ciclo de vida de uploads aban
+         -donados**: o pré-cadastro cria o rascunho "ao iniciar o upload"
+         -, mas se o upload nunca termina, o que acontece com o registro 
+         -de rascunho e com partes/objetos incompletos no storage (lifecy
+         -cle rule do bucket, job de limpeza, abort de multipart, TTL)? E
+         -xplicit choice: run `/research phase-03-videos` para adicionar 
+         -um TD de limpeza de uploads incompletos — ou confirmar que o TD
+         --03 (protocolo) / TD-09 (status) incluem esse fluxo.           
+      79 -- **MD-3** — `## Testing Requirements` registra que worker/proc
+         -essor de fila, adapter de storage e wrapper de FFmpeg **não est
+         -ão na tabela** do testing guide. Sem uma estratégia decidida, `
+         -/plan-build` não consegue atribuir camadas de teste a esses art
+         -efatos: fila real (container) vs. in-memory nos testes de integ
+         -ração? MinIO real vs. adapter local? FFmpeg real com vídeo-fixt
+         -ure pequeno vs. mock do processo? Explicit choice: run `/resear
+         -ch phase-03-videos` para adicionar um TD de estratégia de teste
+         -s para os novos tipos de artefato (e, em seguida, estender o te
+         -sting guide via `artifacts/future-types.md`).                  
+      89 +_None._ _(todos os 9 bullets de `## Capability Coverage` mapeia
+         +m para ≥1 TD; formato de erro HTTP do `nestjs-project/` herdado
+         + de `phase-02-auth/TD-07`; checagem de contract-sync (Decisão #
+         +29) não dispara — fase sem UI, `## UI Inventory` ausente)_     
+      90 
+      91  ### Dependency Gaps
+      92 
+     ...
+      108  - **OQ-8** — TD-08 pending — Streaming e Download. Resolution:
+            fill the **Decision:** field of TD-08 in `docs/decisions/tech
+           nical-decisions-phase-03-videos.md`, then re-run `/plan-valida
+           te phase-03-videos`.
+      109  - **OQ-9** — TD-09 pending — Modelo de Status do Vídeo. Resolu
+           tion: fill the **Decision:** field of TD-09 in `docs/decisions
+           /technical-decisions-phase-03-videos.md`, then re-run `/plan-v
+           alidate phase-03-videos`.
+      110  - **OQ-10** — TD-10 pending — Política de Retry e Falha Final
+           do Processamento. Resolution: fill the **Decision:** field of
+           TD-10 in `docs/decisions/technical-decisions-phase-03-videos.m
+           d`, then re-run `/plan-validate phase-03-videos`.
+      111 +- **OQ-11** — TD-11 pending — Formatos Aceitos e Validação do 
+          +Arquivo de Vídeo. Resolution: fill the **Decision:** field of 
+          +TD-11 in `docs/decisions/technical-decisions-phase-03-videos.m
+          +d`, then re-run `/plan-validate phase-03-videos`.             
+      112 +- **OQ-12** — TD-12 pending — Uploads Abandonados — Destino do
+          + Rascunho no Banco. Resolution: fill the **Decision:** field o
+          +f TD-12 in `docs/decisions/technical-decisions-phase-03-videos
+          +.md`, then re-run `/plan-validate phase-03-videos`.           
+      113 +- **OQ-13** — TD-13 pending — Estratégia de Testes de Worker, 
+          +Fila, Storage e FFmpeg. Resolution: fill the **Decision:** fie
+          +ld of TD-13 in `docs/decisions/technical-decisions-phase-03-vi
+          +deos.md`, then re-run `/plan-validate phase-03-videos`.       
+      114 
+      115  ### UI Coverage Gaps
+      116 
+     ...
+      118 
+      119  ## Resolved Issues
+      120 
+      108 -_No issues resolved yet._                                     
+      121 +- **MD-1** _(resolved_by phase-03-videos/TD-11)_ — Sem TD para
+          + formatos de vídeo aceitos e estratégia de validação do arquiv
+          +o. Coberto pelo TD-11 adicionado na rodada 2 de research (aind
+          +a pending → acompanhado em OQ-11).                            
+      122 +- **MD-2** _(resolved_by phase-03-videos/TD-12)_ — Sem TD para
+          + ciclo de vida de uploads abandonados / rascunhos órfãos. Cobe
+          +rto pelo TD-12 adicionado na rodada 2 de research (ainda pendi
+          +ng → acompanhado em OQ-12).                                   
+      123 +- **MD-3** _(resolved_by phase-03-videos/TD-13)_ — Sem estraté
+          +gia de teste para worker, fila, storage e FFmpeg (fora do guia
+          +). Coberto pelo TD-13 adicionado na rodada 2 de research (aind
+          +a pending → acompanhado em OQ-13).                            
+
+● Gerei de novo o docs/phases/phase-03-videos/validation.md. O resultado é
+  status: dirty, com 16 issues abertas.
+
+  O context.md está atualizado em relação a todas as fontes e não está em estado
+  parcial. A fase tem um único slice, então a checagem cross-slice (Check 8)
+  não roda. Não existem regras customizadas em docs/rules/plan-validate/.
+
+  Issues abertas:
+  - Ambiguidades (3), iguais à rodada anterior:
+    - AMB-1: "sem impacto na performance" não tem critério mensurável.
+    - AMB-2: não está definido quem pode acessar streaming e download, nem em
+      qual status do vídeo, e a fronteira com a Fase 04 fica indefinida.
+    - AMB-3: não está definido quais metadados são extraídos e persistidos.
+  - Open Questions (13): OQ-1 a OQ-13, uma para cada TD ainda pending (TD-01 a
+    TD-13). As três novas são OQ-11 a OQ-13, que correspondem aos TDs 11, 12
+    e 13.
+
+  Missing Decisions (MD-1 a MD-3): marquei como resolvidas, e isso é uma escolha
+  minha. A skill não diz o que fazer com issues que estavam abertas e
+  simplesmente deixaram de ser detectadas. Registrei MD-1, MD-2 e MD-3 como
+  resolvidas por TD-11, TD-12 e TD-13, respectivamente, porque esses TDs foram
+  criados na rodada 2 de research justamente para elas. As decisões em si
+  continuam pendentes e seguem rastreadas em OQ-11 a OQ-13.
+
+  Categorias sem issues:
+  - Nenhuma inconsistência, dependência faltante ou conflito com decisões
+    herdadas. A checagem de conflitos vale pouco por enquanto, porque nenhum TD
+    da fase está decidido; ela roda de novo depois das decisões.
+  - As checagens de lacunas de cobertura de UI e de sincronização de contrato
+    FE↔BE não se aplicam: a fase é só backend e não tem inventário de telas.
+
+  Próximo passo: rodar /plan-resolve phase-03-videos para decidir os 13 TDs e
+  esclarecer AMB-1 a AMB-3, e depois /plan-validate phase-03-videos de novo.
+
+✻ Sautéed for 1m 14s · done 8:23 PM
+
+❯ Commite docs/phases/phase-03-videos/validation.md e                           
+  _claude-sessions/18-fase03-plan-context-round2.txt (se existir) com a         
+  mensagem "docs: phase 03 validation (round 2, dirty — no MD)" e faça push.    
+
+  Pushed to feature/phase-03-videos (ctrl+o to expand)
+
+● Commitei e fiz push dos dois arquivos para feature/phase-03-videos; o commit é
+  o c8d2960. O _claude-sessions/18-fase03-plan-context-round2.txt existia e
+  entrou junto com o validation.md. O working tree ficou limpo.
+
+✻ Brewed for 12s · done 9:41 PM

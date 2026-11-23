@@ -1,7 +1,7 @@
 ---
 scope_type: phase
 related_phases: [3]
-status: pending
+status: decided
 date: 2026-11-20
 scope_description: "Upload e processamento de vídeos: tecnologia de fila, uso do object storage S3-compatível (buckets/chaves, endpoints interno/público, CORS), protocolo de upload de até 10GB direto ao storage com pré-cadastro em rascunho, execução do worker FFmpeg, URL única por vídeo, streaming/download e ciclo de status com política de retry; validação de formato do arquivo, destino de rascunhos abandonados e estratégia de testes de worker/fila/storage/FFmpeg."
 ---
@@ -57,7 +57,9 @@ _Subprojects in scope:_
 
 **Recommendation:** **Option A (BullMQ + Redis)** — é a única opção com módulo Nest oficial **em CJS** (`@nestjs/bullmq@11.0.5`) e com retry/backoff/falha final prontos, como o TD-10 precisa. O custo é um serviço Redis no Compose. O backend PostgreSQL do BullMQ 6 fica como saída futura se o Redis virar peso operacional. pg-boss seria a alternativa "sem infra nova", mas o ESM-only cria atrito direto com o projeto CommonJS e o Jest.
 
-**Decision:** _[pending]_
+**Decision:** A — BullMQ + Redis
+
+**Libraries:** `bullmq@^6.7.8`, `@nestjs/bullmq@^11.0.5`, `ioredis`
 
 ---
 
@@ -111,7 +113,9 @@ _Risco de infra (não reabre a decisão S3):_ a MinIO parou de publicar imagens 
 
 **Recommendation:** **Option A** — mantém todo tráfego real em `minio:9000` (regra do CLAUDE.md) e resolve o problema do host assinado com um cliente só para assinar, sem custo de rede. Bucket único privado mantém vídeos unlisted e rascunhos protegidos. Chaves de env canônicas (contrato entre schema Joi, `compose.yaml` e `.env.example`): `S3_ENDPOINT`, `S3_PUBLIC_ENDPOINT`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_BUCKET`, `S3_FORCE_PATH_STYLE` (`true` para MinIO). A Option B pode ser revisitada na Fase 07 se o volume de thumbnails em listagens exigir CDN.
 
-**Decision:** _[pending]_
+**Decision:** A — Bucket único privado com prefixos + dois clientes S3 (interno e público)
+
+**Libraries:** `@aws-sdk/client-s3@^3.1173.0`, `@aws-sdk/s3-request-presigner@^3.1173.0`
 
 ---
 
@@ -145,7 +149,13 @@ _Risco de infra (não reabre a decisão S3):_ a MinIO parou de publicar imagens 
 
 **Recommendation:** **Option A** — é a única que atende ao mesmo tempo "10GB sem impacto" (bytes direto no storage), "retomar em caso de falha" (`ListParts`) e o limite de 5GB do PUT único. O pré-cadastro em rascunho acontece no endpoint de início, e o enfileiramento acontece no `complete`, que é idempotente. Parâmetros _(sugestão — sem origem normativa)_: partes de 64MiB (cerca de 160 partes para 10GB, bem abaixo do limite de 10.000) e URLs de parte com expiração curta (ex.: 1h, renováveis por lote). Depende do TD-02.
 
-**Decision:** _[pending]_
+**Decision:** A — S3 Multipart com URLs pré-assinadas por parte (orquestrado pela API)
+
+**Libraries:** `@aws-sdk/client-s3`, `@aws-sdk/s3-request-presigner`
+
+**Revisions:**
+
+- 2026-11-23 — Critério de aceite de "sem impacto na performance" (AMB-1): (1) a API nunca recebe os bytes do vídeo — os endpoints de upload só trocam JSON e as partes vão direto ao storage por URL pré-assinada; (2) o tamanho declarado é validado no início (máximo 10GB = 10 × 1024³ bytes) e acima disso a API rejeita sem criar rascunho; (3) o upload é retomável (`ListParts`). Os três pontos devem ser cobertos por testes. Rationale: clarificação de escopo decidida pelo usuário em /plan-resolve.
 
 ---
 
@@ -179,7 +189,9 @@ _Risco de infra (não reabre a decisão S3):_ a MinIO parou de publicar imagens 
 
 **Recommendation:** **Option A** — cumpre o container separado do diagrama sem criar um pacote compartilhado inexistente. O worker é um "modo" da mesma aplicação Nest, com módulo raiz próprio. O isolamento da fila em testes (prefixo por ambiente) deve constar no plano, porque os testes de integração rodam `--runInBand` contra infra compartilhada.
 
-**Decision:** _[pending]_
+**Decision:** A — Mesmo código (`nestjs-project/`), segundo entrypoint, container próprio
+
+**Libraries:** —
 
 ---
 
@@ -213,7 +225,13 @@ _Risco de infra (não reabre a decisão S3):_ a MinIO parou de publicar imagens 
 
 **Recommendation:** **Option A** — com o `fluent-ffmpeg` deprecated e arquivado, um módulo próprio de duas funções sobre `execFile` é menor que o risco de depender de um wrapper morto. O binário vem do apt na imagem do worker (TD-04).
 
-**Decision:** _[pending]_
+**Decision:** A — `child_process` direto (spawn/execFile) com módulo próprio fino
+
+**Libraries:** —
+
+**Revisions:**
+
+- 2026-11-23 — Metadados persistidos (AMB-3): `duration_seconds` em coluna própria (duração citada no project-plan) e coluna `metadata` (jsonb) com os dados do `ffprobe`: `width`, `height`, `videoCodec`, `audioCodec` (opcional), `bitrate`, `formatName`, `sizeBytes`. O jsonb evita nova migration se fases futuras precisarem de mais campos. Rationale: clarificação de escopo decidida pelo usuário em /plan-resolve.
 
 ---
 
@@ -247,7 +265,9 @@ _Risco de infra (não reabre a decisão S3):_ a MinIO parou de publicar imagens 
 
 **Recommendation:** **Option A** — o caso de uso (metadados + 1 frame) é justamente o que range/seek HTTP resolve sem baixar o arquivo. Se uma fase futura exigir transcodificação completa, a Option B pode ser adotada para esse job específico.
 
-**Decision:** _[pending]_
+**Decision:** A — Ler por URL pré-assinada (GET) gerada para o endpoint interno
+
+**Libraries:** `@aws-sdk/s3-request-presigner`
 
 ---
 
@@ -287,7 +307,9 @@ _Risco de infra (não reabre a decisão S3):_ a MinIO parou de publicar imagens 
 
 **Recommendation:** **Option A** — entrega o que o nanoid entregaria (curto, aleatório, não enumerável) sem dependência ESM-only. A garantia de "sem conflito" fica no banco (UNIQUE + retry), não em probabilidade. A não-enumerabilidade importa porque vídeos unlisted (Fase 04) dependem de o link não ser adivinhável.
 
-**Decision:** _[pending]_
+**Decision:** A — ID aleatório curto gerado com `node:crypto` (base64url/base62) + índice UNIQUE
+
+**Libraries:** —
 
 ---
 
@@ -321,7 +343,13 @@ _Risco de infra (não reabre a decisão S3):_ a MinIO parou de publicar imagens 
 
 **Recommendation:** **Option A** — atende "streaming sem download completo" com `Range` nativo do storage, respeita o "Frontend streams from Object Storage" do diagrama e reaproveita o mesmo mecanismo para download. HLS fica como evolução futura, fora do escopo da Fase 03.
 
-**Decision:** _[pending]_
+**Decision:** A — Endpoint da API que autoriza e redireciona (302) para URL GET pré-assinada
+
+**Libraries:** `@aws-sdk/s3-request-presigner`
+
+**Revisions:**
+
+- 2026-11-23 — Regra de acesso desta fase (AMB-2): stream e download são públicos (`@Public()`, sem login), mas só funcionam com status `ready`; nos demais status (`draft`, `processing`, `failed`) respondem 404, sem revelar que o vídeo existe. Consultar o status/detalhe do próprio vídeo exige login e ser dono do canal. Visibilidade (público/unlisted) e publicação ficam para a Fase 04. Rationale: clarificação de escopo decidida pelo usuário em /plan-resolve.
 
 ---
 
@@ -363,7 +391,9 @@ _Risco de infra (não reabre a decisão S3):_ a MinIO parou de publicar imagens 
 
 **Recommendation:** **Option D** — o critério de aceite do desafio pede literalmente "rascunho → processando → pronto/erro" no banco, e D o atende sem tradução nem estados da Fase 04 antecipados. A colisão semântica com o "rascunho" editorial fica explícita para a Fase 04, que pode resolvê-la com um campo de publicação próprio, sem reescrever este enum. A Option A continua sendo a modelagem mais limpa no longo prazo se a aderência literal ao critério não for exigência de avaliação. _(Recomendação revista em 2026-11-20 após o critério de aceite ser informado; antes era A.)_
 
-**Decision:** _[pending]_
+**Decision:** D — Eixo único da Fase 03 — `draft → processing → ready | failed`
+
+**Libraries:** —
 
 ---
 
@@ -397,7 +427,9 @@ _Risco de infra (não reabre a decisão S3):_ a MinIO parou de publicar imagens 
 
 **Recommendation:** **Option A** — poucas tentativas com backoff exponencial cobrem falhas transitórias. O erro irrecuperável evita gastar tentativas em arquivo inválido. O estado `failed` no banco dá uma resposta definitiva, como o critério de aceite exige ("pronto/erro refletido no banco"). Reprocessamento manual (Option B) fica para quando houver painel administrativo.
 
-**Decision:** _[pending]_
+**Decision:** A — Retry nativo da fila + erro irrecuperável + handler de falha final (3 tentativas, backoff exponencial, `UnrecoverableError`)
+
+**Libraries:** —
 
 ---
 
@@ -431,7 +463,9 @@ _Risco de infra (não reabre a decisão S3):_ a MinIO parou de publicar imagens 
 
 **Recommendation:** **Option A** — a allowlist declarada barra o erro honesto sem custo, e o `ffprobe` é a única validação que realmente responde "é um vídeo legível?". Ele já roda no worker (TD-05) e já tem o caminho de falha definitiva (TD-10 → `failed` do TD-09). A camada de magic bytes da Option C só antecipa o caso do cliente que mente, ao preço de uma lista de assinaturas paralela, e não substitui o `ffprobe`.
 
-**Decision:** _[pending]_
+**Decision:** A — Duas camadas — allowlist declarada no início + `ffprobe` como validação real no worker
+
+**Libraries:** —
 
 ---
 
@@ -465,7 +499,9 @@ _Risco de infra (não reabre a decisão S3):_ a MinIO parou de publicar imagens 
 
 **Recommendation:** **Option A** — fecha o caminho comum (desistência explícita) dentro do bullet de pré-cadastro, sem inventar estado no TD-09 nem escopo fora do capability gate. A limpeza automática (Option B) é uma decisão legítima, mas pertence à fase que tiver um bullet que a justifique. Registrá-la como capability adiada mantém o débito visível em vez de silencioso.
 
-**Decision:** _[pending]_
+**Decision:** A — Endpoint de abort explícito que remove o rascunho + limpeza automática adiada
+
+**Libraries:** `@aws-sdk/client-s3`
 
 ---
 
@@ -499,7 +535,9 @@ _Risco de infra (não reabre a decisão S3):_ a MinIO parou de publicar imagens 
 
 **Recommendation:** **Option A** — é a que cumpre literalmente "não mocke o que dá para testar com o Compose" e "fila, worker e storage exercitados", mantendo o E2E determinístico: o worker sob teste é exatamente o código do build, aguardado pelo mecanismo que o próprio BullMQ indica para testes. Instalar o FFmpeg no `Dockerfile.dev` é inevitável em qualquer opção que rode a integração do processor dentro do `nestjs-api`, e unifica a imagem da API e do worker (TD-04). A Option B continua útil como smoke manual da topologia de dois containers, mas não como suíte automatizada.
 
-**Decision:** _[pending]_
+**Decision:** A — Infra real do Compose (Redis/MinIO/FFmpeg), worker instanciado no processo do teste, FFmpeg no `Dockerfile.dev`
+
+**Libraries:** —
 
 ---
 
@@ -507,16 +545,16 @@ _Risco de infra (não reabre a decisão S3):_ a MinIO parou de publicar imagens 
 
 | ID | Scope | Decision | Recommendation | Choice |
 |----|-------|----------|---------------|--------|
-| TD-01 | Backend (+ infra Compose/env) | Tecnologia de fila | A — BullMQ + Redis (`@nestjs/bullmq@^11.0.5`, CJS) | _[pending]_ |
-| TD-02 | Cross-layer (+ infra Compose/env) | Uso do object storage: buckets/chaves, endpoints, CORS | A — bucket único privado + cliente interno e cliente de assinatura público | _[pending]_ |
-| TD-03 | Cross-layer | Protocolo de upload 10GB + pré-cadastro em rascunho | A — S3 multipart com URLs pré-assinadas por parte | _[pending]_ |
-| TD-04 | Backend (+ infra Compose) | Execução do Video Worker | A — mesmo código, segundo entrypoint, container próprio | _[pending]_ |
-| TD-05 | Backend | Integração FFmpeg/ffprobe | A — `child_process` direto (fluent-ffmpeg deprecated) | _[pending]_ |
-| TD-06 | Backend | Acesso do worker ao arquivo | A — leitura por URL pré-assinada (Range/seek) | _[pending]_ |
-| TD-07 | Cross-layer | URL única por vídeo | A — ID curto aleatório via `node:crypto` + UNIQUE | _[pending]_ |
-| TD-08 | Cross-layer | Streaming e download | A — API autoriza e redireciona 302 para URL pré-assinada | _[pending]_ |
-| TD-09 | Cross-layer | Modelo de status do vídeo | D — eixo único `draft → processing → ready \| failed` (literal ao critério de aceite) | _[pending]_ |
-| TD-10 | Backend | Retry e falha final | A — retry nativo + irrecuperável + handler de falha final | _[pending]_ |
-| TD-11 | Cross-layer | Formatos aceitos e validação do arquivo | A — allowlist de `Content-Type` no início + `ffprobe` no worker (irrecuperável → `failed`) | _[pending]_ |
-| TD-12 | Cross-layer | Uploads abandonados — destino do rascunho | A — endpoint de abort que remove o rascunho; limpeza automática adiada | _[pending]_ |
-| TD-13 | Backend (+ infra de testes) | Estratégia de testes de worker, fila, storage e FFmpeg | A — Redis/MinIO/FFmpeg reais; worker no processo do teste; FFmpeg no `Dockerfile.dev` | _[pending]_ |
+| TD-01 | Backend (+ infra Compose/env) | Tecnologia de fila | A — BullMQ + Redis (`@nestjs/bullmq@^11.0.5`, CJS) | A |
+| TD-02 | Cross-layer (+ infra Compose/env) | Uso do object storage: buckets/chaves, endpoints, CORS | A — bucket único privado + cliente interno e cliente de assinatura público | A |
+| TD-03 | Cross-layer | Protocolo de upload 10GB + pré-cadastro em rascunho | A — S3 multipart com URLs pré-assinadas por parte | A |
+| TD-04 | Backend (+ infra Compose) | Execução do Video Worker | A — mesmo código, segundo entrypoint, container próprio | A |
+| TD-05 | Backend | Integração FFmpeg/ffprobe | A — `child_process` direto (fluent-ffmpeg deprecated) | A |
+| TD-06 | Backend | Acesso do worker ao arquivo | A — leitura por URL pré-assinada (Range/seek) | A |
+| TD-07 | Cross-layer | URL única por vídeo | A — ID curto aleatório via `node:crypto` + UNIQUE | A |
+| TD-08 | Cross-layer | Streaming e download | A — API autoriza e redireciona 302 para URL pré-assinada | A |
+| TD-09 | Cross-layer | Modelo de status do vídeo | D — eixo único `draft → processing → ready \| failed` (literal ao critério de aceite) | D |
+| TD-10 | Backend | Retry e falha final | A — retry nativo + irrecuperável + handler de falha final | A |
+| TD-11 | Cross-layer | Formatos aceitos e validação do arquivo | A — allowlist de `Content-Type` no início + `ffprobe` no worker (irrecuperável → `failed`) | A |
+| TD-12 | Cross-layer | Uploads abandonados — destino do rascunho | A — endpoint de abort que remove o rascunho; limpeza automática adiada | A |
+| TD-13 | Backend (+ infra de testes) | Estratégia de testes de worker, fila, storage e FFmpeg | A — Redis/MinIO/FFmpeg reais; worker no processo do teste; FFmpeg no `Dockerfile.dev` | A |

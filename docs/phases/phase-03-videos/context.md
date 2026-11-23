@@ -3,12 +3,13 @@ kind: phase
 name: phase-03-videos
 sources_mtime:
   docs/project-plan.md: "2026-11-17T11:04:44-03:00"
-  docs/decisions/technical-decisions-phase-03-videos.md: "2026-11-20T17:19:28-03:00"
+  docs/decisions/technical-decisions-phase-03-videos.md: "2026-11-23T15:41:23-03:00"
   docs/decisions/technical-decisions-openapi-docs-nestjs.md: "2026-11-17T11:04:44-03:00"
   docs/phases/phase-01-configuracao-base/context.md: "2026-11-17T11:04:44-03:00"
   docs/phases/phase-02-auth/context.md: "2026-11-17T11:04:44-03:00"
   docs/phases/phase-02-auth-frontend/context.md: "2026-11-17T11:04:44-03:00"
   .claude/skills/testing-guide-nestjs-project/SKILL.md: "2026-11-17T11:04:44-03:00"
+  docs/phases/phase-03-videos/library-refs.md: "2026-11-23T16:12:29-03:00"
 ---
 
 # phase-03-videos — Context
@@ -48,19 +49,22 @@ sources_mtime:
 
 | Ref | Source | Scope | Topic | Status | Decision | Libraries |
 |-----|--------|-------|-------|--------|----------|-----------|
-| phase-03-videos/TD-01 | phase | Backend | Tecnologia de Fila (Message Queue) | pending | — | — |
-| phase-03-videos/TD-02 | phase | Cross-layer | Uso do Object Storage — Buckets/Chaves, Endpoint Interno vs Público e CORS | pending | — | — |
-| phase-03-videos/TD-03 | phase | Cross-layer | Protocolo de Upload de até 10GB + Pré-cadastro em Rascunho | pending | — | — |
-| phase-03-videos/TD-04 | phase | Backend | Execução do Video Worker (processo, container e entrypoint) | pending | — | — |
-| phase-03-videos/TD-05 | phase | Backend | Integração com FFmpeg/ffprobe (spawn direto vs wrapper) | pending | — | — |
-| phase-03-videos/TD-06 | phase | Backend | Acesso do Worker ao Arquivo (download completo vs leitura por URL pré-assinada) | pending | — | — |
-| phase-03-videos/TD-07 | phase | Cross-layer | Estratégia de URL Única por Vídeo | pending | — | — |
-| phase-03-videos/TD-08 | phase | Cross-layer | Streaming e Download | pending | — | — |
-| phase-03-videos/TD-09 | phase | Cross-layer | Modelo de Status do Vídeo | pending | — | — |
-| phase-03-videos/TD-10 | phase | Backend | Política de Retry e Falha Final do Processamento | pending | — | — |
-| phase-03-videos/TD-11 | phase | Cross-layer | Formatos Aceitos e Validação do Arquivo de Vídeo | pending | — | — |
-| phase-03-videos/TD-12 | phase | Cross-layer | Uploads Abandonados — Destino do Rascunho no Banco | pending | — | — |
-| phase-03-videos/TD-13 | phase | Backend | Estratégia de Testes de Worker, Fila, Storage e FFmpeg | pending | — | — |
+| phase-03-videos/TD-01 | phase | Backend | Tecnologia de Fila (Message Queue) | decided | A — BullMQ + Redis | bullmq@^6.7.8, @nestjs/bullmq@^11.0.5, ioredis |
+| phase-03-videos/TD-02 | phase | Cross-layer | Uso do Object Storage — Buckets/Chaves, Endpoint Interno vs Público e CORS | decided | A — Bucket único privado com prefixos + dois clientes S3 (interno e público) | @aws-sdk/client-s3@^3.1173.0, @aws-sdk/s3-request-presigner@^3.1173.0 |
+| phase-03-videos/TD-03 | phase | Cross-layer | Protocolo de Upload de até 10GB + Pré-cadastro em Rascunho | decided | A — S3 Multipart com URLs pré-assinadas por parte (orquestrado pela API) | @aws-sdk/client-s3, @aws-sdk/s3-request-presigner |
+|     └─ Last revision: 2026-11-23 — Critério de aceite de "sem impacto na performance" (AMB-1): (1) a API nunca rece… | | | | | | |
+| phase-03-videos/TD-04 | phase | Backend | Execução do Video Worker (processo, container e entrypoint) | decided | A — Mesmo código (`nestjs-project/`), segundo entrypoint, container próprio | — |
+| phase-03-videos/TD-05 | phase | Backend | Integração com FFmpeg/ffprobe (spawn direto vs wrapper) | decided | A — `child_process` direto (spawn/execFile) com módulo próprio fino | — |
+|     └─ Last revision: 2026-11-23 — Metadados persistidos (AMB-3): `duration_seconds` em coluna própria (duração cit… | | | | | | |
+| phase-03-videos/TD-06 | phase | Backend | Acesso do Worker ao Arquivo (download completo vs leitura por URL pré-assinada) | decided | A — Ler por URL pré-assinada (GET) gerada para o endpoint interno | @aws-sdk/s3-request-presigner |
+| phase-03-videos/TD-07 | phase | Cross-layer | Estratégia de URL Única por Vídeo | decided | A — ID aleatório curto gerado com `node:crypto` (base64url/base62) + índice UNIQUE | — |
+| phase-03-videos/TD-08 | phase | Cross-layer | Streaming e Download | decided | A — Endpoint da API que autoriza e redireciona (302) para URL GET pré-assinada | @aws-sdk/s3-request-presigner |
+|     └─ Last revision: 2026-11-23 — Regra de acesso desta fase (AMB-2): stream e download são públicos (`@Public()`,… | | | | | | |
+| phase-03-videos/TD-09 | phase | Cross-layer | Modelo de Status do Vídeo | decided | D — Eixo único da Fase 03 — `draft → processing → ready \| failed` | — |
+| phase-03-videos/TD-10 | phase | Backend | Política de Retry e Falha Final do Processamento | decided | A — Retry nativo da fila + erro irrecuperável + handler de falha final (3 tentativas, backoff exponencial, `UnrecoverableError`) | — |
+| phase-03-videos/TD-11 | phase | Cross-layer | Formatos Aceitos e Validação do Arquivo de Vídeo | decided | A — Duas camadas — allowlist declarada no início + `ffprobe` como validação real no worker | — |
+| phase-03-videos/TD-12 | phase | Cross-layer | Uploads Abandonados — Destino do Rascunho no Banco | decided | A — Endpoint de abort explícito que remove o rascunho + limpeza automática adiada | @aws-sdk/client-s3 |
+| phase-03-videos/TD-13 | phase | Backend | Estratégia de Testes de Worker, Fila, Storage e FFmpeg | decided | A — Infra real do Compose (Redis/MinIO/FFmpeg), worker instanciado no processo do teste, FFmpeg no `Dockerfile.dev` | — |
 
 _Source files:_
 
@@ -82,7 +86,95 @@ _Source files:_
 
 ## Decisions Detail
 
-_No decided TDs yet._
+### phase-03-videos/TD-01
+
+**Recommendation:** é a única opção com módulo Nest oficial **em CJS** (`@nestjs/bullmq@11.0.5`) e com retry/backoff/falha final prontos, como o TD-10 precisa. O custo é um serviço Redis no Compose. O backend PostgreSQL do BullMQ 6 fica como saída futura se o Redis virar peso operacional. pg-boss seria a alternativa "sem infra nova", mas o ESM-only cria atrito direto com o projeto CommonJS e o Jest.
+
+**Libraries:** `bullmq@^6.7.8`, `@nestjs/bullmq@^11.0.5`, `ioredis`
+
+### phase-03-videos/TD-02
+
+**Recommendation:** mantém todo tráfego real em `minio:9000` (regra do CLAUDE.md) e resolve o problema do host assinado com um cliente só para assinar, sem custo de rede. Bucket único privado mantém vídeos unlisted e rascunhos protegidos. Chaves de env canônicas (contrato entre schema Joi, `compose.yaml` e `.env.example`): `S3_ENDPOINT`, `S3_PUBLIC_ENDPOINT`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_BUCKET`, `S3_FORCE_PATH_STYLE` (`true` para MinIO). A Option B pode ser revisitada na Fase 07 se o volume de thumbnails em listagens exigir CDN.
+
+**Libraries:** `@aws-sdk/client-s3@^3.1173.0`, `@aws-sdk/s3-request-presigner@^3.1173.0`
+
+### phase-03-videos/TD-03
+
+**Recommendation:** é a única que atende ao mesmo tempo "10GB sem impacto" (bytes direto no storage), "retomar em caso de falha" (`ListParts`) e o limite de 5GB do PUT único. O pré-cadastro em rascunho acontece no endpoint de início, e o enfileiramento acontece no `complete`, que é idempotente. Parâmetros _(sugestão — sem origem normativa)_: partes de 64MiB (cerca de 160 partes para 10GB, bem abaixo do limite de 10.000) e URLs de parte com expiração curta (ex.: 1h, renováveis por lote). Depende do TD-02.
+
+**Libraries:** `@aws-sdk/client-s3`, `@aws-sdk/s3-request-presigner`
+
+**Revisions:**
+
+- 2026-11-23 — Critério de aceite de "sem impacto na performance" (AMB-1): (1) a API nunca recebe os bytes do vídeo — os endpoints de upload só trocam JSON e as partes vão direto ao storage por URL pré-assinada; (2) o tamanho declarado é validado no início (máximo 10GB = 10 × 1024³ bytes) e acima disso a API rejeita sem criar rascunho; (3) o upload é retomável (`ListParts`). Os três pontos devem ser cobertos por testes. Rationale: clarificação de escopo decidida pelo usuário em /plan-resolve.
+
+### phase-03-videos/TD-04
+
+**Recommendation:** cumpre o container separado do diagrama sem criar um pacote compartilhado inexistente. O worker é um "modo" da mesma aplicação Nest, com módulo raiz próprio. O isolamento da fila em testes (prefixo por ambiente) deve constar no plano, porque os testes de integração rodam `--runInBand` contra infra compartilhada.
+
+**Libraries:** —
+
+### phase-03-videos/TD-05
+
+**Recommendation:** com o `fluent-ffmpeg` deprecated e arquivado, um módulo próprio de duas funções sobre `execFile` é menor que o risco de depender de um wrapper morto. O binário vem do apt na imagem do worker (TD-04).
+
+**Libraries:** —
+
+**Revisions:**
+
+- 2026-11-23 — Metadados persistidos (AMB-3): `duration_seconds` em coluna própria (duração citada no project-plan) e coluna `metadata` (jsonb) com os dados do `ffprobe`: `width`, `height`, `videoCodec`, `audioCodec` (opcional), `bitrate`, `formatName`, `sizeBytes`. O jsonb evita nova migration se fases futuras precisarem de mais campos. Rationale: clarificação de escopo decidida pelo usuário em /plan-resolve.
+
+### phase-03-videos/TD-06
+
+**Recommendation:** o caso de uso (metadados + 1 frame) é justamente o que range/seek HTTP resolve sem baixar o arquivo. Se uma fase futura exigir transcodificação completa, a Option B pode ser adotada para esse job específico.
+
+**Libraries:** `@aws-sdk/s3-request-presigner`
+
+### phase-03-videos/TD-07
+
+**Recommendation:** entrega o que o nanoid entregaria (curto, aleatório, não enumerável) sem dependência ESM-only. A garantia de "sem conflito" fica no banco (UNIQUE + retry), não em probabilidade. A não-enumerabilidade importa porque vídeos unlisted (Fase 04) dependem de o link não ser adivinhável.
+
+**Libraries:** —
+
+### phase-03-videos/TD-08
+
+**Recommendation:** atende "streaming sem download completo" com `Range` nativo do storage, respeita o "Frontend streams from Object Storage" do diagrama e reaproveita o mesmo mecanismo para download. HLS fica como evolução futura, fora do escopo da Fase 03.
+
+**Libraries:** `@aws-sdk/s3-request-presigner`
+
+**Revisions:**
+
+- 2026-11-23 — Regra de acesso desta fase (AMB-2): stream e download são públicos (`@Public()`, sem login), mas só funcionam com status `ready`; nos demais status (`draft`, `processing`, `failed`) respondem 404, sem revelar que o vídeo existe. Consultar o status/detalhe do próprio vídeo exige login e ser dono do canal. Visibilidade (público/unlisted) e publicação ficam para a Fase 04. Rationale: clarificação de escopo decidida pelo usuário em /plan-resolve.
+
+### phase-03-videos/TD-09
+
+**Recommendation:** o critério de aceite do desafio pede literalmente "rascunho → processando → pronto/erro" no banco, e D o atende sem tradução nem estados da Fase 04 antecipados. A colisão semântica com o "rascunho" editorial fica explícita para a Fase 04, que pode resolvê-la com um campo de publicação próprio, sem reescrever este enum. A Option A continua sendo a modelagem mais limpa no longo prazo se a aderência literal ao critério não for exigência de avaliação. _(Recomendação revista em 2026-11-20 após o critério de aceite ser informado; antes era A.)_
+
+**Libraries:** —
+
+### phase-03-videos/TD-10
+
+**Recommendation:** poucas tentativas com backoff exponencial cobrem falhas transitórias. O erro irrecuperável evita gastar tentativas em arquivo inválido. O estado `failed` no banco dá uma resposta definitiva, como o critério de aceite exige ("pronto/erro refletido no banco"). Reprocessamento manual (Option B) fica para quando houver painel administrativo.
+
+**Libraries:** —
+
+### phase-03-videos/TD-11
+
+**Recommendation:** a allowlist declarada barra o erro honesto sem custo, e o `ffprobe` é a única validação que realmente responde "é um vídeo legível?". Ele já roda no worker (TD-05) e já tem o caminho de falha definitiva (TD-10 → `failed` do TD-09). A camada de magic bytes da Option C só antecipa o caso do cliente que mente, ao preço de uma lista de assinaturas paralela, e não substitui o `ffprobe`.
+
+**Libraries:** —
+
+### phase-03-videos/TD-12
+
+**Recommendation:** fecha o caminho comum (desistência explícita) dentro do bullet de pré-cadastro, sem inventar estado no TD-09 nem escopo fora do capability gate. A limpeza automática (Option B) é uma decisão legítima, mas pertence à fase que tiver um bullet que a justifique. Registrá-la como capability adiada mantém o débito visível em vez de silencioso.
+
+**Libraries:** `@aws-sdk/client-s3`
+
+### phase-03-videos/TD-13
+
+**Recommendation:** é a que cumpre literalmente "não mocke o que dá para testar com o Compose" e "fila, worker e storage exercitados", mantendo o E2E determinístico: o worker sob teste é exatamente o código do build, aguardado pelo mecanismo que o próprio BullMQ indica para testes. Instalar o FFmpeg no `Dockerfile.dev` é inevitável em qualquer opção que rode a integração do processor dentro do `nestjs-api`, e unifica a imagem da API e do worker (TD-04). A Option B continua útil como smoke manual da topologia de dois containers, mas não como suíte automatizada.
+
+**Libraries:** —
 
 ## Inherited Decisions Detail
 
