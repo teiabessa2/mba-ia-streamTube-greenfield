@@ -1,0 +1,1447 @@
+ ▐▛███▛█   Claude Code v2.1.329
+▝▜██████▀  Opus 5.5 · Claude Pro
+ ▝▝   ▝▝   ~/mbaengsoft/mba-ia-streamTube-greenfield
+
+
+❯ /clear                                                                        
+
+❯ /plan-validate phase-03-videos                                                
+                                                                                
+Diretório da fase: docs/phases/phase-03-videos/. Responda em português.         
+  ⎿  ⧉ Selected 225 lines from .claude/skills/decide/SKILL.md in Visual Studio 
+     Code
+
+  Read 2 files, listed 1 directory, ran 1 shell command (ctrl+o to expand)
+
+● Write(docs/phases/phase-03-videos/validation.md)
+  ⎿  Wrote 108 lines to docs/phases/phase-03-videos/validation.md
+       1 ---
+       2 kind: phase
+       3 name: phase-03-videos
+       4 status: dirty
+       5 issue_count: 16
+       6 sources_mtime:
+       7   docs/phases/phase-03-videos/context.md: "2026-11-20T16:24:33-0
+         3:00"
+       8   docs/decisions/technical-decisions-phase-03-videos.md: "2026-1
+         1-20T15:10:25-03:00"
+     … +100 lines (ctrl+o to expand)
+
+● Criei o docs/phases/phase-03-videos/validation.md com resultado status: dirty
+  e 16 issues abertas. Como é a primeira execução, ainda não há issues
+  resolvidas.
+
+  Verificações preliminares: todas passaram. O context.md está atualizado em
+  relação a todas as fontes. A fase tem um único slice, então a cobertura entre
+  slices (Check 8) não roda. Também não existe docs/rules/plan-validate/, então
+  não há regras customizadas.
+
+  Issues encontradas
+
+  Questões em aberto (OQ-1 a OQ-10): os 10 TDs da fase (TD-01 a TD-10) estão
+  todos pendentes. Esse é o principal bloqueio.
+
+  Ambiguidades:
+  - AMB-1 — "sem impacto na performance" no upload de 10GB não tem um critério
+    de aceite que dê para testar.
+  - AMB-2 — Não está definido quem pode assistir por streaming ou baixar, nem em
+    qual status do vídeo (rascunho ou processando). Também falta definir onde
+    fica o limite com a Fase 04, que cuida da publicação.
+  - AMB-3 — A lista de "metadados" a extrair e salvar não foi definida. Ela
+    determina os campos da entidade de vídeo e o contrato da API.
+
+  Decisões faltando:
+  - MD-1 — Quais formatos de vídeo são aceitos e em que ponto o arquivo é
+    validado.
+  - MD-2 — O que acontece com uploads abandonados: rascunhos órfãos e partes
+    incompletas no storage.
+  - MD-3 — Como testar os tipos novos de artefato (worker de fila, adapter de
+    storage, FFmpeg), que o testing guide ainda não cobre.
+
+  MD-1 e MD-2 podem já estar entre as opções do TD-03, do TD-09 ou do TD-10.
+  Esta etapa lê só o context.md, então não consegui conferir no texto dos TDs.
+  Se estiverem cobertos, basta confirmar isso no /plan-resolve.
+
+  Categorias sem issues:
+  - Inconsistências e conflitos com decisões herdadas (IC, ICC): nada
+    encontrado. Como nenhum TD da fase está decidido ainda, essa checagem vai
+    ter mais efeito depois que você decidir os TDs.
+  - Lacunas de dependência (DG): nada encontrado.
+  - Cobertura de UI (UIG): não se aplica, porque a fase não tem UI.
+  - Contrato frontend↔backend (Decisão #29): não se aplica pelo mesmo motivo.
+
+  Uma inconsistência pequena no context.md: o doc openapi-docs-nestjs (que é
+  ad-hoc, com related_phases: []) aparece no sources_mtime e nas decisões
+  herdadas, mas não na lista _Source files:_. Não abri issue por isso. No
+  sources_mtime do validation.md registrei só os arquivos que a skill pede: o
+  context.md e o doc de decisões da fase.
+
+  Próximo passo
+
+  Para resolver as issues, rode /plan-resolve phase-03-videos e depois
+  /plan-validate phase-03-videos de novo. Para MD-1, MD-2 e MD-3, se os TDs
+  atuais não cobrirem, talvez valha rodar /research phase-03-videos antes.
+
+✻ Cooked for 1m 32s · done Friday 4:45 PM
+
+❯ Liste as 16 issues de docs/phases/phase-03-videos/validation.md em uma        
+  tabela: código, TD relacionada, descrição curta e o que precisa ser decidido. 
+  Responda em português.                                                        
+
+● As 16 issues de docs/phases/phase-03-videos/validation.md. Todos os TDs
+  citados estão em docs/decisions/technical-decisions-phase-03-videos.md.
+
+  Código: AMB-1
+  TD relacionada: TD-03
+  Descrição curta: A frase "sem impacto na performance" no upload de 10GB não
+    tem critério que dê para medir
+  O que precisa ser decidido: O critério de aceite que dá para testar: a API
+    não recebe os bytes do vídeo, a memória fica constante independente do
+    tamanho e/ou o upload pode ser retomado
+  ────────────────────────────────────────
+  Código: AMB-2
+  TD relacionada: TD-08, TD-09
+  Descrição curta: Não está definido quem pode fazer streaming/download, nem
+    em qual status do vídeo
+  O que precisa ser decidido: Se o download exige login; se vídeos em rascunho
+    ou processando podem ser acessados (só pelo dono?); onde fica o limite com
+    a Fase 04, que cuida da publicação
+  ────────────────────────────────────────
+  Código: AMB-3
+  TD relacionada: TD-05, TD-09
+  Descrição curta: Não está definido quais "metadados" são extraídos e salvos
+  O que precisa ser decidido: A lista mínima de campos (duração, resolução,
+    codec, bitrate, tamanho, fps…), que define a entidade e o contrato da API
+  ────────────────────────────────────────
+  Código: MD-1
+  TD relacionada: TD-03 / TD-10 (talvez já coberto)
+  Descrição curta: Não há TD para os formatos de vídeo aceitos nem para como o
+    arquivo é validado
+  O que precisa ser decidido: Quais containers/codecs/MIME types são aceitos;
+    onde a validação acontece (Content-Type no início, magic bytes ou ffprobe
+    no worker); o que fazer com um arquivo inválido
+  ────────────────────────────────────────
+  Código: MD-2
+  TD relacionada: TD-03 / TD-09 (talvez já coberto)
+  Descrição curta: Não há TD para uploads abandonados
+  O que precisa ser decidido: O que acontece com o rascunho órfão e com as
+    partes incompletas no storage (lifecycle rule do bucket, job de limpeza,
+    abort do multipart, TTL)
+  ────────────────────────────────────────
+  Código: MD-3
+  TD relacionada: — (precisa de TD novo)
+  Descrição curta: Não há estratégia de teste para worker, fila, storage e
+    FFmpeg
+  O que precisa ser decidido: Fila real ou in-memory nos testes; MinIO real ou
+    adapter local; FFmpeg real com um vídeo pequeno de fixture ou mock do
+    processo
+  ────────────────────────────────────────
+  Código: OQ-1
+  TD relacionada: TD-01
+  Descrição curta: Tecnologia de fila (message queue)
+  O que precisa ser decidido: Qual fila usar
+  ────────────────────────────────────────
+  Código: OQ-2
+  TD relacionada: TD-02
+  Descrição curta: Uso do object storage
+  O que precisa ser decidido: Organização de buckets/chaves, endpoint interno
+    vs público, configuração de CORS
+  ────────────────────────────────────────
+  Código: OQ-3
+  TD relacionada: TD-03
+  Descrição curta: Protocolo de upload de até 10GB + pré-cadastro em rascunho
+  O que precisa ser decidido: Como o upload é feito e quando o rascunho é
+    criado
+  ────────────────────────────────────────
+  Código: OQ-4
+  TD relacionada: TD-04
+  Descrição curta: Execução do Video Worker
+  O que precisa ser decidido: Como o worker roda: processo, container e
+    entrypoint
+  ────────────────────────────────────────
+  Código: OQ-5
+  TD relacionada: TD-05
+  Descrição curta: Integração com FFmpeg/ffprobe
+  O que precisa ser decidido: Chamar o FFmpeg diretamente (spawn) ou usar uma
+    lib wrapper
+  ────────────────────────────────────────
+  Código: OQ-6
+  TD relacionada: TD-06
+  Descrição curta: Como o worker acessa o arquivo
+  O que precisa ser decidido: Baixar o arquivo inteiro ou ler por URL
+    pré-assinada
+  ────────────────────────────────────────
+  Código: OQ-7
+  TD relacionada: TD-07
+  Descrição curta: URL única por vídeo
+  O que precisa ser decidido: Como gerar o identificador ou slug sem colisão
+  ────────────────────────────────────────
+  Código: OQ-8
+  TD relacionada: TD-08
+  Descrição curta: Streaming e download
+  O que precisa ser decidido: Como servir a reprodução progressiva e o
+    download
+  ────────────────────────────────────────
+  Código: OQ-9
+  TD relacionada: TD-09
+  Descrição curta: Modelo de status do vídeo
+  O que precisa ser decidido: Quais status existem e quais transições são
+    permitidas
+  ────────────────────────────────────────
+  Código: OQ-10
+  TD relacionada: TD-10
+  Descrição curta: Retry e falha final do processamento
+  O que precisa ser decidido: Quantas tentativas, qual backoff e o que
+    acontece quando falha de vez
+
+  Nas linhas AMB e MD, a coluna "TD relacionada" é uma suposição minha. A
+  validação lê só o context.md, então não conferi o texto completo dos TDs. Se o
+  MD-1 ou o MD-2 já estiverem nas opções do TD-03, TD-09 ou TD-10, basta
+  confirmar isso no /plan-resolve phase-03-videos. Os OQs correspondem um a um
+  aos TDs pendentes.
+
+✻ Crunched for 13s · done Friday 4:47 PM
+
+※ recap: Estamos planejando a Fase 03 (vídeos), e a validação ficou com 16 issues abertas: 10 TDs pendentes, 3 ambiguidades e 3 decisões faltando. O próximo passo é rodar /plan-resolve phase-03-videos para decidir essas issues.
+
+❯ Commite docs/phases/phase-03-videos/validation.md e                           
+  _claude-sessions/16-fase03-plan-context.txt (se existir) com a mensagem       
+  "docs: phase 03 validation (round 1, dirty)" e faça push.                     
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Não está em main, e nenhum segredo foi encontrado no arquivo de sessão.
+  Seguindo com o commit.
+
+  Pushed to feature/phase-03-videos (ctrl+o to expand)
+
+● Commitei os dois arquivos em feature/phase-03-videos (commit 43c050e, mensagem
+  "docs: phase 03 validation (round 1, dirty)") e fiz o push para origin.
+
+  - docs/phases/phase-03-videos/validation.md
+  - _claude-sessions/16-fase03-plan-context.txt (existia; antes de commitar,
+    procurei credenciais no arquivo e não achei nenhuma)
+
+  O próximo passo é /plan-resolve phase-03-videos.
+
+✻ Cooked for 13s · done Friday 4:58 PM
+
+※ recap: Estamos planejando a Fase 03 (vídeos): a validação saiu dirty, com 16 issues abertas, e já foi commitada e enviada para a branch feature/phase-03-videos. O próximo passo é rodar /plan-resolve phase-03-videos.
+
+❯ /research phase 03                                                            
+                                                                                
+  Objetivo: fechar as issues MD-1, MD-2 e MD-3 de                               
+  docs/phases/phase-03-videos/validation.md acrescentando TDs ao documento      
+  EXISTENTE docs/decisions/technical-decisions-phase-03-videos.md (mesmo slice, 
+  slug phase-03-videos — se perguntar sobre colisão de slug, a escolha é        
+  editar o slice existente). Não altere TD-01 a TD-10. Novos TDs com Decision:  
+  _[pending]_.                                                                  
+                                                                                
+  - TD-11 (MD-1) — Formatos aceitos e validação do arquivo: allowlist de        
+  content-type declarado no início do upload vs validação real pelo ffprobe no  
+  worker (arquivo sem stream de vídeo → erro irrecuperável → status failed,     
+  ligado à TD-10). Defina onde cada validação acontece.                         
+  - TD-12 (MD-2) — Uploads abandonados: o storage já é coberto                  
+  (MINIO_API_STALE_UPLOADS_EXPIRY no dev, lifecycle                             
+  AbortIncompleteMultipartUpload em produção — ver TD-02/TD-03). Decida o       
+  destino do rascunho no banco: endpoint de abort que remove o rascunho; e se a 
+  limpeza automática de rascunhos parados entra nesta fase ou fica como         
+  capability adiada (nenhum bullet da Fase 03 a exige).                         
+  - TD-13 (MD-3) — Estratégia de testes de worker, fila, storage e FFmpeg.      
+  Restrição do desafio: "Não mocke o que dá para testar de verdade com a infra  
+  do Compose" e "fila, worker e storage precisam ser exercitados pelos testes". 
+  Avalie: Redis/BullMQ e MinIO reais do Compose nos testes de integração/e2e;   
+  FFmpeg real com vídeo de fixture pequeno (ex.: gerado com ffmpeg lavfi        
+  testsrc); mock de child_process apenas em unit; como o e2e aguarda o worker   
+  (container worker rodando vs processor instanciado no teste); e se o          
+  container da API também precisa de FFmpeg para rodar os testes do processor   
+  (os testes rodam dentro de nestjs-api). Siga .claude/rules/nestjs-testing.md  
+  e a skill testing-guide-nestjs-project.                                       
+                                                                                
+  Em cada TD, campo Capability ligado ao bullet da fase e abrangência           
+  (infra/backend/cross-layer). Consulte o context7 quando houver lib. Responda  
+  em português.                                                                 
+
+● Skill(research)
+  ⎿  Claude couldn't run /research. It runs only when you type it at the prompt.
+
+● Não fiz nenhuma alteração: a skill /research só roda quando você mesma a
+  digita como comando. Ela está marcada com disable-model-invocation e eu não
+  consigo acioná-la. Também não posso reproduzir o fluxo dela por outros meios.
+
+  O texto chegou como conteúdo colado, e por isso o comando não foi executado.
+  Para rodar, digite /research direto no prompt com os argumentos, por exemplo:
+
+  /research phase 03 Objetivo: fechar as issues MD-1, MD-2 e MD-3 de 
+  docs/phases/phase-03-videos/validation.md acrescentando TDs ao documento 
+  EXISTENTE docs/decisions/technical-decisions-phase-03-videos.md (mesmo slice, 
+  slug phase-03-videos ...) ...
+
+  O resto do texto pode ser o mesmo que você colou.
+
+  Depois que a skill acrescentar os TDs 11 a 13 ao doc de decisões, o context.md
+  vai ficar desatualizado em relação a ele. A sequência fica:
+  1. /plan-context phase-03-videos
+  2. /plan-validate phase-03-videos, para MD-1, MD-2 e MD-3 passarem a OQ-11,
+     OQ-12 e OQ-13, ligados aos TDs pendentes
+  3. /plan-resolve phase-03-videos
+
+✻ Cogitated for 14s · done Friday 5:02 PM
+
+❯ /research phase 03                                                            
+                                                                                
+  Objetivo: fechar as issues MD-1, MD-2 e MD-3 de                               
+  docs/phases/phase-03-videos/validation.md acrescentando TDs ao documento      
+  EXISTENTE docs/decisions/technical-decisions-phase-03-videos.md (mesmo slice, 
+  slug phase-03-videos — se perguntar sobre colisão de slug, a escolha é        
+  editar o slice existente). Não altere TD-01 a TD-10. Novos TDs com Decision:  
+  _[pending]_.                                                                  
+                                                                                
+  - TD-11 (MD-1) — Formatos aceitos e validação do arquivo: allowlist de        
+  content-type declarado no início do upload vs validação real pelo ffprobe no  
+  worker (arquivo sem stream de vídeo → erro irrecuperável → status failed,     
+  ligado à TD-10). Defina onde cada validação acontece.                         
+  - TD-12 (MD-2) — Uploads abandonados: o storage já é coberto                  
+  (MINIO_API_STALE_UPLOADS_EXPIRY no dev, lifecycle                             
+  AbortIncompleteMultipartUpload em produção — ver TD-02/TD-03). Decida o       
+  destino do rascunho no banco: endpoint de abort que remove o rascunho; e se a 
+  limpeza automática de rascunhos parados entra nesta fase ou fica como         
+  capability adiada (nenhum bullet da Fase 03 a exige).                         
+  - TD-13 (MD-3) — Estratégia de testes de worker, fila, storage e FFmpeg.      
+  Restrição do desafio: "Não mocke o que dá para testar de verdade com a infra  
+  do Compose" e "fila, worker e storage precisam ser exercitados pelos testes". 
+  Avalie: Redis/BullMQ e MinIO reais do Compose nos testes de integração/e2e;   
+  FFmpeg real com vídeo de fixture pequeno (ex.: gerado com ffmpeg lavfi        
+  testsrc); mock de child_process apenas em unit; como o e2e aguarda o worker   
+  (container worker rodando vs processor instanciado no teste); e se o          
+  container da API também precisa de FFmpeg para rodar os testes do processor   
+  (os testes rodam dentro de nestjs-api). Siga .claude/rules/nestjs-testing.md  
+  e a skill testing-guide-nestjs-project.                                       
+                                                                                
+  Em cada TD, campo Capability ligado ao bullet da fase e abrangência           
+  (infra/backend/cross-layer). Consulte o context7 quando houver lib. Responda  
+  em português.                                                                 
+
+● Recebi o mesmo texto colado de novo, e o resultado é o mesmo: não consigo
+  acionar o /research. A skill só roda quando a mensagem começa com o comando
+  digitado por você. Quando o texto inteiro vem como um bloco colado, inclusive
+  o /research, o terminal não reconhece o comando.
+
+  Para funcionar:
+
+  1. Digite /research phase 03 à mão no prompt.
+  2. Na mesma mensagem, logo depois, cole o restante do texto (de "Objetivo:"
+     até o fim).
+
+  Assim o comando é reconhecido e o texto colado vira o argumento. A partir daí
+  a skill acrescenta os TD-11 a TD-13 ao doc existente, como você descreveu.
+
+✻ Brewed for 5s · done Friday 5:04 PM
+
+❯ /research phase 03                                                            
+                                                                                
+Objetivo: fechar as issues MD-1, MD-2 e MD-3 de                                 
+docs/phases/phase-03-videos/validation.md acrescentando TDs ao documento        
+EXISTENTE docs/decisions/technical-decisions-phase-03-videos.md (mesmo slice,   
+slug phase-03-videos — se perguntar sobre colisão de slug, a escolha é editar o 
+slice existente). Não altere TD-01 a TD-10. Novos TDs com Decision:             
+_[pending]_.                                                                    
+                                                                                
+- TD-11 (MD-1) — Formatos aceitos e validação do arquivo: allowlist de          
+content-type declarado no início do upload vs validação real pelo ffprobe no    
+worker (arquivo sem stream de vídeo → erro irrecuperável → status failed,       
+ligado à TD-10). Defina onde cada validação acontece.                           
+- TD-12 (MD-2) — Uploads abandonados: o storage já é coberto                    
+(MINIO_API_STALE_UPLOADS_EXPIRY no dev, lifecycle                               
+AbortIncompleteMultipartUpload em produção — ver TD-02/TD-03). Decida o destino 
+do rascunho no banco: endpoint de abort que remove o rascunho; e se a limpeza   
+automática de rascunhos parados entra nesta fase ou fica como capability adiada 
+(nenhum bullet da Fase 03 a exige).                                             
+- TD-13 (MD-3) — Estratégia de testes de worker, fila, storage e FFmpeg.        
+Restrição do desafio: "Não mocke o que dá para testar de verdade com a infra do 
+Compose" e "fila, worker e storage precisam ser exercitados pelos testes".      
+Avalie: Redis/BullMQ e MinIO reais do Compose nos testes de integração/e2e;     
+FFmpeg real com vídeo de fixture pequeno (ex.: gerado com ffmpeg lavfi          
+testsrc); mock de child_process apenas em unit; como o e2e aguarda o worker     
+(container worker rodando vs processor instanciado no teste); e se o container  
+da API também precisa de FFmpeg para rodar os testes do processor (os testes    
+rodam dentro de nestjs-api). Siga .claude/rules/nestjs-testing.md e a skill     
+testing-guide-nestjs-project.                                                   
+                                                                                
+Em cada TD, campo Capability ligado ao bullet da fase e abrangência             
+(infra/backend/cross-layer). Consulte o context7 quando houver lib. Responda em 
+português.                                                                      
+
+  Read 2 files, listed 1 directory, called context7, ran 3 shell commands (ctrl+o to expand)
+
+● Estou consultando a documentação do BullMQ no context7, para fundamentar o
+  TD-13 (testes de fila e worker).
+
+  Read 1 file, called context7, ran 1 shell command (ctrl+o to expand)
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Added 102 lines
+      401 
+      402  ---
+      403 
+      404 +## TD-11: Formatos Aceitos e Validação do Arquivo de Vídeo    
+      405 +                                                              
+      406 +**Scope:** Cross-layer                                        
+      407 +                                                              
+      408 +**Capability:** Transversal — covers: "Upload de vídeos com su
+          +porte a arquivos de até 10GB sem impacto na performance", "Pro
+          +cessamento automático do vídeo após upload (extração de duraçã
+          +o e metadados)"                                               
+      409 +                                                              
+      410 +**Context:** _Abrangência: Cross-layer — o endpoint de início 
+          +do upload (TD-03) rejeita ou aceita o arquivo pelo que o clien
+          +te declara, e esse contrato de erro é consumido por qualquer c
+          +liente HTTP; o worker faz a validação real. Fecha a MD-1 da va
+          +lidação da Fase 03. Depende do TD-03, do TD-05 e do TD-10._ Co
+          +m o upload direto ao storage (TD-03 Option A), a API **nunca v
+          +ê os bytes**: no início ela só conhece o que o cliente declara
+          + (nome, `Content-Type`, tamanho). O `Content-Type` declarado n
+          +ão é confiável, porque qualquer cliente pode mentir. Só o `ffp
+          +robe` no worker sabe se o objeto tem de fato um stream de víde
+          +o decodificável. É preciso definir **onde cada validação acont
+          +ece** e o que acontece com um arquivo que passa na primeira e 
+          +falha na segunda.                                             
+      411 +                                                              
+      412 +**Options:**                                                  
+      413 +                                                              
+      414 +### Option A: Duas camadas — allowlist declarada no início + `
+          +ffprobe` como validação real no worker                        
+      415 +- **No início (API):** allowlist de `Content-Type` declarado (
+          +ex.: `video/mp4`, `video/quicktime`, `video/webm`, `video/x-ma
+          +troska` _(sugestão — sem origem normativa)_) e tamanho ≤ 10GB 
+          +(TD-03). Se falhar, o endpoint responde 4xx com código de domí
+          +nio no envelope de `phase-02-auth/TD-07`, **sem criar rascunho
+          +** nem multipart. O `Content-Type` vai para o `CreateMultipart
+          +Upload`, e o objeto o carrega ao ser servido (TD-08). **No wor
+          +ker:** `ffprobe` (TD-05). Saída sem nenhum stream `codec_type:
+          + video`, ou erro de parse ou demuxer, vira **erro irrecuperáve
+          +l** (`UnrecoverableError`, TD-10) e o vídeo passa a `failed` (
+          +TD-09) na primeira tentativa, sem retries.                    
+      416 +- **Pros:** rejeição barata e imediata do caso comum (o usuári
+          +o escolheu um PDF) sem gastar upload de 10GB. A validação auto
+          +ritativa fica em um único lugar, o mesmo que já lê o arquivo. 
+          +Nenhum byte extra lido pela API. Usa o caminho de falha do TD-
+          +10 sem código novo.                                           
+      417 +- **Cons:** um arquivo com `Content-Type` falso só é detectado
+          + depois do upload completo e do enfileiramento (o usuário desc
+          +obre o erro tarde, via status `failed`). Duas listas a manter 
+          +coerentes: allowlist de MIME e o que o FFmpeg da imagem decodi
+          +fica.                                                         
+      418 +- **Libraries:** nenhuma nova.                                
+      419 +                                                              
+      420 +### Option B: Só `ffprobe` no worker (sem allowlist no início)
+      421 +- A API aceita qualquer `Content-Type` dentro do limite de tam
+          +anho e cria o rascunho. Toda validação de formato acontece no 
+          +worker, com o mesmo caminho irrecuperável → `failed` da Option
+          + A.                                                           
+      422 +- **Pros:** uma única regra, sem lista de MIME a manter. Aceit
+          +a qualquer formato que o FFmpeg leia, mesmo com MIME exótico o
+          +u genérico (`application/octet-stream`).                      
+      423 +- **Cons:** um arquivo obviamente errado ocupa upload, storage
+          +, um job e um rascunho até falhar. Mais objetos e rascunhos in
+          +válidos a limpar (ver TD-12). O contrato da API não dá feedbac
+          +k imediato a nenhum cliente.                                  
+      424 +- **Libraries:** nenhuma nova.                                
+      425 +                                                              
+      426 +### Option C: Três camadas — Option A + verificação de magic b
+          +ytes no `complete`                                            
+      427 +- Igual à A, mas no `complete` do multipart (TD-03), antes de 
+          +enfileirar, a API faz um `GetObject` com `Range: bytes=0-4095`
+          + _(sugestão — sem origem normativa)_ e confere a assinatura do
+          + container (ex.: caixa `ftyp` do MP4/MOV, EBML do WebM/MKV). S
+          +e não bater, responde 4xx, marca `failed` e não enfileira.    
+      428 +- **Pros:** detecta `Content-Type` falso antes de ocupar a fil
+          +a e o worker, com custo de rede de poucos KB.                 
+      429 +- **Cons:** reimplementa parcialmente o que o `ffprobe` faz (u
+          +ma lista de assinaturas própria). Magic bytes corretos não gar
+          +antem um vídeo decodificável, então o `ffprobe` continua obrig
+          +atório: a camada é redundante para o critério de aceite. A lib
+          + usual de detecção (`file-type`) é ESM-only (ver a nota sobre 
+          +ESM-only acima; formato não conferido nesta pesquisa), o que e
+          +mpurra para uma lista manual.                                 
+      430 +- **Libraries:** nenhuma (lista manual de assinaturas) ou `fil
+          +e-type` (ESM-only).                                           
+      431 +                                                              
+      432 +**Recommendation:** **Option A** — a allowlist declarada barra
+          + o erro honesto sem custo, e o `ffprobe` é a única validação q
+          +ue realmente responde "é um vídeo legível?". Ele já roda no wo
+          +rker (TD-05) e já tem o caminho de falha definitiva (TD-10 → `
+          +failed` do TD-09). A camada de magic bytes da Option C só ante
+          +cipa o caso do cliente que mente, ao preço de uma lista de ass
+          +inaturas paralela, e não substitui o `ffprobe`.               
+      433 +                                                              
+      434 +**Decision:** _[pending]_                                     
+      435 +                                                              
+      436 +---                                                           
+      437 +                                                              
+      438 +## TD-12: Uploads Abandonados — Destino do Rascunho no Banco  
+      439 +                                                              
+      440 +**Scope:** Cross-layer                                        
+      441 +                                                              
+      442 +**Capability:** Pré-cadastro automático do vídeo como rascunho
+          + ao iniciar o upload                                          
+      443 +                                                              
+      444 +**Context:** _Abrangência: Cross-layer — o endpoint de abort é
+          + parte do contrato de upload consumido pelo cliente (testes E2
+          +E nesta fase, frontend no futuro); a remoção acontece no banco
+          + (backend). Fecha a MD-2 da validação da Fase 03. Depende do T
+          +D-03 e do TD-09._ O pré-cadastro cria o vídeo `draft` (TD-09) 
+          +**antes** de o upload terminar. As partes órfãs no **storage**
+          + já estão cobertas: `MINIO_API_STALE_UPLOADS_EXPIRY` no dev e 
+          +a regra de lifecycle `AbortIncompleteMultipartUpload` em produ
+          +ção (TD-02/TD-03). Nada disso toca no **registro do rascunho n
+          +o banco**, que fica `draft` para sempre se o cliente desistir 
+          +ou sumir. Também é preciso decidir se a limpeza **automática**
+          + de rascunhos parados entra nesta fase. **Nenhum bullet da Fas
+          +e 03 a exige**: o capability gate só cobre o pré-cadastro, e a
+          + limpeza automática seria extrapolação sem um bullet que a jus
+          +tifique.                                                      
+      445 +                                                              
+      446 +**Options:**                                                  
+      447 +                                                              
+      448 +### Option A: Endpoint de abort explícito que remove o rascunh
+          +o + limpeza automática adiada                                 
+      449 +- `DELETE` (ou `POST .../abort`) no upload do vídeo, só pelo d
+          +ono e só com status `draft`. A API chama `AbortMultipartUpload
+          +` e **remove o registro do rascunho** (hard delete: não existe
+          + estado editorial a preservar, e o TD-09 não tem estado `abort
+          +ed`). É idempotente: abortar um vídeo já removido responde 404
+          + de domínio, e abortar um vídeo que não está mais `draft` resp
+          +onde 409. Um rascunho abandonado **sem** abort (cliente sumiu)
+          + continua `draft` no banco. A limpeza automática fica registra
+          +da como **capability adiada** (`Non-UI / Deferred Capabilities
+          +`, via `/plan-resolve`) para a fase de gerenciamento de vídeos
+          + (Fase 04) ou uma task própria.                               
+      450 +- **Pros:** cumpre o pré-cadastro sem lixo no caminho comum (d
+          +esistência explícita). Usa o endpoint de abort já previsto no 
+          +fluxo do TD-03 Option A. Nada fora do capability gate. Sem nov
+          +o estado no enum do TD-09.                                    
+      451 +- **Cons:** rascunhos de clientes que somem ficam acumulados a
+          +té a fase que trouxer a limpeza. O painel da Fase 04 precisa s
+          +aber exibir ou ocultar `draft` antigos.                       
+      452 +- **Libraries:** `@aws-sdk/client-s3` (`AbortMultipartUpload`,
+          + já no TD-03).                                                
+      453 +                                                              
+      454 +### Option B: Option A + job agendado de limpeza de rascunhos 
+          +parados nesta fase                                            
+      455 +- Além do abort, um job repetível na fila (job schedulers do B
+          +ullMQ, rodando no worker do TD-04, sem `@nestjs/schedule`) rem
+          +ove rascunhos `draft` com mais de N horas (ex.: 24h, alinhado 
+          +ao padrão do `MINIO_API_STALE_UPLOADS_EXPIRY` _(sugestão — sem
+          + origem normativa)_) e aborta o multipart correspondente.     
+      456 +- **Pros:** banco limpo sem depender do cliente. Reaproveita a
+          + fila e o worker já decididos. O mesmo N do storage evita um r
+          +ascunho apontando para partes já expiradas.                   
+      457 +- **Cons:** **sem bullet da Fase 03 que o justifique** (fere o
+          + capability gate). Exige uma regra de "parado" que pode apagar
+          + uploads lentos legítimos de 10GB: o N precisa considerar a re
+          +tomada (TD-03). Mais um job e mais testes nesta fase.         
+      458 +- **Libraries:** as da fila (TD-01).                          
+      459 +                                                              
+      460 +### Option C: Sem abort — rascunho permanece até a gestão de v
+          +ídeos da Fase 04                                              
+      461 +- A Fase 03 não expõe abort. O usuário que desiste simplesment
+          +e para. O rascunho e o multipart ficam até a expiração do stor
+          +age, e o registro fica até a exclusão de vídeo da Fase 04.    
+      462 +- **Pros:** menos um endpoint nesta fase.                     
+      463 +- **Cons:** todo upload desistido vira lixo garantido no banco
+          +. O cliente não tem como liberar o multipart antes da expiraçã
+          +o. Contradiz o fluxo do TD-03 Option A, que já cita o abort.  
+      464 +- **Libraries:** nenhuma.                                     
+      465 +                                                              
+      466 +**Recommendation:** **Option A** — fecha o caminho comum (desi
+          +stência explícita) dentro do bullet de pré-cadastro, sem inven
+          +tar estado no TD-09 nem escopo fora do capability gate. A limp
+          +eza automática (Option B) é uma decisão legítima, mas pertence
+          + à fase que tiver um bullet que a justifique. Registrá-la como
+          + capability adiada mantém o débito visível em vez de silencios
+          +o.                                                            
+      467 +                                                              
+      468 +**Decision:** _[pending]_                                     
+      469 +                                                              
+      470 +---                                                           
+      471 +                                                              
+      472 +## TD-13: Estratégia de Testes de Worker, Fila, Storage e FFmp
+          +eg                                                            
+      473 +                                                              
+      474 +**Scope:** Backend                                            
+      475 +                                                              
+      476 +**Capability:** Transversal — covers: "Serviço de armazenament
+          +o de arquivos (vídeos e thumbnails)", "Serviço de processament
+          +o em segundo plano (filas)", "Processamento automático do víde
+          +o após upload (extração de duração e metadados)", "Geração aut
+          +omática de thumbnail a partir de um frame do vídeo"           
+      477 +                                                              
+      478 +**Context:** _Abrangência: Backend + infra de testes (imagem d
+          +o `nestjs-api` com FFmpeg, isolamento de Redis e MinIO compart
+          +ilhados). Fecha a MD-3 da validação da Fase 03. Depende do TD-
+          +01, TD-02, TD-04, TD-05 e TD-06._ O testing guide (`artifacts/
+          +future-types.md`) só orienta "Processor com lógica: Unit + Int
+          +egration (DB/storage reais)" e "Service com side-effect (stora
+          +ge): Integration com serviço real ou adapter local". Ele não c
+          +obre FFmpeg, como o E2E espera o worker, nem o isolamento da f
+          +ila. **Restrições do desafio:** "Não mocke o que dá para testa
+          +r de verdade com a infra do Compose" e "fila, worker e storage
+          + precisam ser exercitados pelos testes". **Fatos do repositóri
+          +o:** os testes rodam **dentro do container `nestjs-api`** (`Do
+          +ckerfile.dev` = `node:25.6.0-slim`, **sem FFmpeg**). `npm test
+          +` usa o `testRegex` `(spec|integration-spec)` **sem** `--runIn
+          +Band`, então integrações rodam em paralelo entre workers do Je
+          +st. Já existe o precedente de serviço real do Compose em teste
+          +: o Mailpit (`src/test/mailpit.ts`, `mail.service.integration-
+          +spec.ts`). A doc do BullMQ descreve `job.waitUntilFinished(que
+          +ueEvents)` como "conveniência de teste no Node.js" (context7, 
+          +`/taskforcesh/bullmq` v5.81.5).                               
+      479 +                                                              
+      480 +**Options:**                                                  
+      481 +                                                              
+      482 +### Option A: Infra real do Compose + worker instanciado no pr
+          +ocesso do teste                                               
+      483 +- **Unit (`*.spec.ts`):** só ramos de lógica pura. Mock de `ch
+          +ild_process` restrito ao `FfmpegService` (parse do JSON, timeo
+          +ut, stderr, exit code ≠ 0) e à classificação de erro do proces
+          +sor (transitório vs `UnrecoverableError`, TD-10). **Integratio
+          +n (`*.integration-spec.ts`):** Redis, MinIO e Postgres **reais
+          +** do Compose. `FfmpegService` com **FFmpeg real** sobre uma f
+          +ixture pequena gerada com `ffmpeg -f lavfi -i testsrc=duration
+          +=2:size=320x240:rate=10` _(parâmetros: sugestão — sem origem n
+          +ormativa)_, mais uma fixture "não é vídeo" (texto) para o cami
+          +nho `failed`. O processor é chamado com `process(job)` direto,
+          + contra objeto real no MinIO e linha real no banco. **E2E (`*.
+          +e2e-spec.ts`):** sobe `AppModule` (HTTP via supertest) **e** o
+          + `WorkerModule` (TD-04) no mesmo processo Jest. O fluxo comple
+          +to (init → PUT das partes nas URLs assinadas → complete) roda 
+          +contra o MinIO real, e o teste aguarda com `job.waitUntilFinis
+          +hed(queueEvents, timeout)` ou polling do status no banco, depo
+          +is afirma `ready`, a duração e a thumbnail no storage. **Isola
+          +mento:** `prefix` do BullMQ e bucket (ou prefixo de chave) pró
+          +prios de teste, incluindo `JEST_WORKER_ID` por causa do parale
+          +lismo, para que o container `video-worker` rodando não consuma
+          + jobs do teste. **Imagem:** `ffmpeg` instalado via apt no `Doc
+          +kerfile.dev`, a mesma imagem que serve a API e o worker (TD-04
+          +).                                                            
+      484 +- **Pros:** cumpre as duas restrições do desafio: fila, worker
+          +, storage e FFmpeg exercitados de verdade, mock só em unit. O 
+          +E2E é determinístico (o worker é do mesmo build do teste, sem 
+          +depender de outro container estar de pé e atualizado). A fixtu
+          +re gerada por `lavfi` dispensa binário commitado e prova que o
+          + FFmpeg da imagem funciona. Segue o precedente do Mailpit.    
+      485 +- **Cons:** a imagem da API ganha o FFmpeg, mesmo sem usá-lo e
+          +m runtime (cerca de 100MB+ no slim, _estimativa não medida_). 
+          +E2E mais lentos (processamento real) e sensíveis a timeout. O 
+          +processo de teste acumula conexões Redis (Queue, Worker, Queue
+          +Events) que precisam de `close()` no `afterAll` para o Jest en
+          +cerrar.                                                       
+      486 +- **Libraries:** as da fila e do storage (TD-01, TD-02). Nenhu
+          +ma lib de teste nova.                                         
+      487 +                                                              
+      488 +### Option B: Infra real + E2E caixa-preta contra o container 
+          +`video-worker`                                                
+      489 +- Unit e integration como na Option A. O E2E **não** instancia
+          + o worker: só faz as chamadas HTTP e faz polling do status do 
+          +vídeo pela API ou pelo banco até `ready`/`failed`, contando qu
+          +e o serviço `video-worker` do Compose processe o job. O FFmpeg
+          + só precisa estar na imagem do worker, mas os testes de integr
+          +ação do processor/FFmpeg rodam no `nestjs-api`, que ainda prec
+          +isaria dele.                                                  
+      490 +- **Pros:** é o teste mais fiel à topologia real (dois contain
+          +ers, mesma fila). Não exercita o código do worker fora do seu 
+          +entrypoint.                                                   
+      491 +- **Cons:** o teste depende de outro container estar rodando, 
+          +saudável e com o código atual (volume e watch do worker). O wo
+          +rker do Compose usa o prefixo de dev, então isolar exige um se
+          +gundo worker de teste ou trocar a env do container. Falhas vir
+          +am timeouts opacos. Não elimina o FFmpeg no `nestjs-api` se as
+          + integrações do processor rodarem lá.                         
+      492 +- **Libraries:** as mesmas.                                   
+      493 +                                                              
+      494 +### Option C: Testcontainers para Redis e MinIO por suíte     
+      495 +- Cada suíte de integração/E2E sobe seus próprios containers R
+          +edis e MinIO efêmeros (`testcontainers`), e o FFmpeg é real co
+          +mo na Option A.                                               
+      496 +- **Pros:** isolamento total entre suítes, sem prefixos nem li
+          +mpeza manual.                                                 
+      497 +- **Cons:** os testes já rodam **dentro** de um container: Tes
+          +tcontainers exige o socket do Docker montado no `nestjs-api` (
+          +Docker-out-of-Docker), com impacto de segurança e de setup. Di
+          +verge da regra do projeto ("connect to the Docker `db` service
+          +") e do precedente do Mailpit. Startup lento por suíte. Mais u
+          +ma dependência de dev.                                        
+      498 +- **Libraries:** `testcontainers`, `@testcontainers/redis` (ve
+          +rsões não conferidas nesta pesquisa).                         
+      499 +                                                              
+      500 +**Recommendation:** **Option A** — é a que cumpre literalmente
+          + "não mocke o que dá para testar com o Compose" e "fila, worke
+          +r e storage exercitados", mantendo o E2E determinístico: o wor
+          +ker sob teste é exatamente o código do build, aguardado pelo m
+          +ecanismo que o próprio BullMQ indica para testes. Instalar o F
+          +Fmpeg no `Dockerfile.dev` é inevitável em qualquer opção que r
+          +ode a integração do processor dentro do `nestjs-api`, e unific
+          +a a imagem da API e do worker (TD-04). A Option B continua úti
+          +l como smoke manual da topologia de dois containers, mas não c
+          +omo suíte automatizada.                                       
+      501 +                                                              
+      502 +**Decision:** _[pending]_                                     
+      503 +                                                              
+      504 +---                                                           
+      505 +                                                              
+      506  ## Decisions Summary
+      507 
+      508  | ID | Scope | Decision | Recommendation | Choice |
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Added 3 lines
+      517  | TD-08 | Cross-layer | Streaming e download | A — API autoriz
+           a e redireciona 302 para URL pré-assinada | _[pending]_ |
+      518  | TD-09 | Cross-layer | Modelo de status do vídeo | D — eixo ú
+           nico `draft → processing → ready \| failed` (literal ao critér
+           io de aceite) | _[pending]_ |
+      519  | TD-10 | Backend | Retry e falha final | A — retry nativo + i
+           rrecuperável + handler de falha final | _[pending]_ |
+      520 +| TD-11 | Cross-layer | Formatos aceitos e validação do arquiv
+          +o | A — allowlist de `Content-Type` no início + `ffprobe` no w
+          +orker (irrecuperável → `failed`) | _[pending]_ |              
+      521 +| TD-12 | Cross-layer | Uploads abandonados — destino do rascu
+          +nho | A — endpoint de abort que remove o rascunho; limpeza aut
+          +omática adiada | _[pending]_ |                                
+      522 +| TD-13 | Backend (+ infra de testes) | Estratégia de testes d
+          +e worker, fila, storage e FFmpeg | A — Redis/MinIO/FFmpeg reai
+          +s; worker no processo do teste; FFmpeg no `Dockerfile.dev` | _
+          +[pending]_ |                                                  
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Added 1 line, removed 1 line
+      3  related_phases: [3]
+      4  status: pending
+      5  date: 2026-11-20
+      6 -scope_description: "Upload e processamento de vídeos: tecnologia
+        - de fila, uso do object storage S3-compatível (buckets/chaves, e
+        -ndpoints interno/público, CORS), protocolo de upload de até 10GB
+        - direto ao storage com pré-cadastro em rascunho, execução do wor
+        -ker FFmpeg, URL única por vídeo, streaming/download e ciclo de s
+        -tatus com política de retry."                                   
+      6 +scope_description: "Upload e processamento de vídeos: tecnologia
+        + de fila, uso do object storage S3-compatível (buckets/chaves, e
+        +ndpoints interno/público, CORS), protocolo de upload de até 10GB
+        + direto ao storage com pré-cadastro em rascunho, execução do wor
+        +ker FFmpeg, URL única por vídeo, streaming/download e ciclo de s
+        +tatus com política de retry; validação de formato do arquivo, de
+        +stino de rascunhos abandonados e estratégia de testes de worker/
+        +fila/storage/FFmpeg."                                           
+      7  ---
+      8 
+      9  # Technical Decisions — Phase 03: Upload e Processamento de Víde
+         os
+  Ran 1 shell command (ctrl+o to expand)
+
+● Adicionei os TD-11, TD-12 e TD-13 ao fim do
+  docs/decisions/technical-decisions-phase-03-videos.md, todos com Decision: 
+  _[pending]_. O diff confirma que TD-01 a TD-10 ficaram iguais. A única linha
+  alterada é o scope_description do frontmatter, onde acrescentei os três temas
+  novos. A tabela de resumo ganhou as três linhas.
+
+  TD: TD-11 — Formatos aceitos e validação
+  Fecha: MD-1
+  Abrangência: Cross-layer
+  Recomendação: A — duas camadas: no início do upload, uma lista de
+    Content-Type aceitos (4xx com código de domínio e sem criar rascunho); no
+    worker, o ffprobe como validação real. Arquivo sem stream de vídeo gera
+    UnrecoverableError, que leva a failed (TD-10 e TD-09) na primeira
+    tentativa.
+  ────────────────────────────────────────
+  TD: TD-12 — Uploads abandonados
+  Fecha: MD-2
+  Abrangência: Cross-layer
+  Recomendação: A — endpoint de abort, só para o dono e só em draft: chama
+    AbortMultipartUpload e apaga o rascunho do banco. Não há estado novo no
+    enum do TD-09. A limpeza automática fica como capability adiada, porque
+    nenhum bullet da Fase 03 a justifica.
+  ────────────────────────────────────────
+  TD: TD-13 — Testes de worker, fila, storage e FFmpeg
+  Fecha: MD-3
+  Abrangência: Backend (+ infra de testes)
+  Recomendação: A — Redis, MinIO e FFmpeg reais do Compose; mock de
+    child_process só nos testes unitários; fixture gerada com lavfi testsrc; o
+    E2E sobe o WorkerModule no próprio processo do Jest; FFmpeg instalado no
+    Dockerfile.dev.
+
+  Alternativas consideradas:
+  - TD-11: só o ffprobe, ou uma terceira camada de magic bytes no complete.
+  - TD-12: um job agendado de limpeza já nesta fase, ou não ter abort.
+  - TD-13: E2E caixa-preta contra o container video-worker, ou Testcontainers.
+
+  Pontos do TD-13:
+  - Isolamento dos testes: o npm test atual roda os testes de integração em
+    paralelo, sem --runInBand. Por isso o prefixo da fila e o bucket de teste
+    precisam incluir o JEST_WORKER_ID. Sem esse isolamento, os testes interferem
+    entre si, e o container video-worker pode consumir jobs dos testes.
+  - FFmpeg no nestjs-api: é necessário em qualquer opção, porque os testes do
+    processor rodam dentro desse container. Isso também faz a API e o worker
+    usarem a mesma imagem.
+  - Espera pelo worker no E2E: usar waitUntilFinished, que a própria
+    documentação do BullMQ (consultada no context7, v5.81.5) descreve como
+    facilidade para testes.
+
+  Itens não verificados e premissas:
+  - file-type: não confirmei que é ESM-only (citado na Option C do TD-11).
+  - Testcontainers: não conferi as versões.
+  - FFmpeg: os ~100MB a mais na imagem são estimativa.
+  - Parâmetros: os valores da allowlist, da fixture e o N de horas estão
+    marcados como (sugestão — sem origem normativa).
+  - Parecer do context7: consultei só o BullMQ. As APIs do S3 citadas já estavam
+    no TD-03.
+
+  Próximos passos:
+  1. /plan-context phase-03-videos. O context.md ficou desatualizado em relação
+     ao doc de decisões.
+  2. /plan-validate phase-03-videos. As MD-1, MD-2 e MD-3 devem passar a OQ
+     ligados aos TD-11, TD-12 e TD-13.
+  3. /plan-resolve phase-03-videos.
+
+✻ Baked for 2m 39s · done Friday 5:10 PM
+
+※ recap: Estamos planejando a Fase 03 (vídeos), e acabei de acrescentar ao doc de decisões os TD-11, TD-12 e TD-13, pendentes, para fechar as MD-1 a MD-3. O próximo passo é você rodar `/plan-context phase-03-videos`.
+
+❯ Corrija um fato na TD-13: a suíte deste projeto NÃO roda integrações em       
+  paralelo na prática — os testes de integração compartilham o Postgres (o      
+  migrations.integration-spec.ts apaga e recria o schema), e rodar sem          
+  --runInBand gerou 37 falhas na baseline desta fase. A execução obrigatória é  
+  npm test -- --runInBand (registrado em docs/phases/phase-02-auth/progress.md: 
+  "Tests require --runInBand" e no README). Ajuste:                             
+  1. O Context da TD-13: substitua a afirmação sobre paralelismo por esse fato  
+  e sua fonte.                                                                  
+  2. Option A: o isolamento necessário é contra o container video-worker do     
+  Compose (prefixo de fila e prefixo de chave/bucket próprios de teste); remova 
+  a dependência de JEST_WORKER_ID (no máximo, mencione como opcional caso um    
+  dia a suíte rode em paralelo).                                                
+  3. Registre que a Definition of Done desta fase usa npm test -- --runInBand.  
+     Não altere os campos Decision nem os outros TDs. Mostre o diff antes de    
+  salvar. Responda em português.                                                
+
+  Searched for 1 pattern, listed 1 directory (ctrl+o to expand)
+
+● Confirmei as fontes: docs/phases/phase-02-auth/progress.md:26 ("Tests require
+  --runInBand to avoid parallel FK violations between suites sharing the same
+  DB") e README.md:113. Não achei registro escrito das "37 falhas" no
+  repositório, então atribuí o número à baseline informada nesta sessão.
+
+  Diff proposto (nada foi salvo ainda), com as mudanças apenas no TD-13:
+
+  1. Context: troca da afirmação sobre paralelismo
+  -`npm test` usa o `testRegex` `(spec|integration-spec)` **sem** `--runInBand`,
+  então integrações rodam em paralelo entre workers do Jest.
+  +Embora o script `npm test` não passe `--runInBand`, a suíte **não roda 
+  integrações em paralelo na prática**: os testes de integração compartilham o 
+  mesmo Postgres (o `migrations.integration-spec.ts` apaga e recria o schema), e
+  rodar sem `--runInBand` gerou 37 falhas na baseline desta fase (informado na 
+  sessão de 2026-11-20). A execução obrigatória é `npm test -- --runInBand` 
+  (registrado em `docs/phases/phase-02-auth/progress.md`: "Tests require 
+  --runInBand to avoid parallel FK violations between suites sharing the same 
+  DB", e no `README.md`: "Testes de integração/e2e rodam com `--runInBand`").
+
+  2. Context: Definition of Done (acrescentado ao fim do parágrafo)
+   ...como "conveniência de teste no Node.js" (context7, `/taskforcesh/bullmq`
+  v5.81.5).
+  +**Definition of Done desta fase:** o critério "a suíte completa passa" do 
+  `CLAUDE.md` é verificado com `npm test -- --runInBand`.
+
+  3. Option A: isolamento contra o container video-worker
+  -**Isolamento:** `prefix` do BullMQ e bucket (ou prefixo de chave) próprios de
+  teste, incluindo `JEST_WORKER_ID` por causa do paralelismo, para que o 
+  container `video-worker` rodando não consuma jobs do teste.
+  +**Isolamento:** contra o container `video-worker` do Compose, que fica 
+  rodando com a config de dev. Os testes usam `prefix` do BullMQ e bucket (ou 
+  prefixo de chave) próprios de teste, para que esse worker não consuma jobs do 
+  teste nem os testes poluam os objetos de dev. Como a suíte roda serializada 
+  (`--runInBand`), um prefixo fixo de teste basta. Sufixar com `JEST_WORKER_ID` 
+  seria opcional, só se um dia a suíte passar a rodar em paralelo.
+
+  Os campos Decision, os outros TDs e a tabela de resumo continuam iguais.
+
+● Answered Claude's questions:
+  ⎿  · Salvo no TD-13 do technical-decisions-phase-03-videos.md as 3 alterações 
+     mostradas (Context sem a afirmação de paralelismo + fonte do --runInBand, 
+     DoD com `npm test -- --runInBand`, isolamento da Option A contra o 
+     container video-worker sem JEST_WORKER_ID obrigatório)? → Salvar como está
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Added 1 line, removed 1 line
+      475 
+      476  **Capability:** Transversal — covers: "Serviço de armazenament
+           o de arquivos (vídeos e thumbnails)", "Serviço de processament
+           o em segundo plano (filas)", "Processamento automático do víde
+           o após upload (extração de duração e metadados)", "Geração aut
+           omática de thumbnail a partir de um frame do vídeo"
+      477 
+      478 -**Context:** _Abrangência: Backend + infra de testes (imagem d
+          -o `nestjs-api` com FFmpeg, isolamento de Redis e MinIO compart
+          -ilhados). Fecha a MD-3 da validação da Fase 03. Depende do TD-
+          -01, TD-02, TD-04, TD-05 e TD-06._ O testing guide (`artifacts/
+          -future-types.md`) só orienta "Processor com lógica: Unit + Int
+          -egration (DB/storage reais)" e "Service com side-effect (stora
+          -ge): Integration com serviço real ou adapter local". Ele não c
+          -obre FFmpeg, como o E2E espera o worker, nem o isolamento da f
+          -ila. **Restrições do desafio:** "Não mocke o que dá para testa
+          -r de verdade com a infra do Compose" e "fila, worker e storage
+          - precisam ser exercitados pelos testes". **Fatos do repositóri
+          -o:** os testes rodam **dentro do container `nestjs-api`** (`Do
+          -ckerfile.dev` = `node:25.6.0-slim`, **sem FFmpeg**). `npm test
+          -` usa o `testRegex` `(spec|integration-spec)` **sem** `--runIn
+          -Band`, então integrações rodam em paralelo entre workers do Je
+          -st. Já existe o precedente de serviço real do Compose em teste
+          -: o Mailpit (`src/test/mailpit.ts`, `mail.service.integration-
+          -spec.ts`). A doc do BullMQ descreve `job.waitUntilFinished(que
+          -ueEvents)` como "conveniência de teste no Node.js" (context7, 
+          -`/taskforcesh/bullmq` v5.81.5).                               
+      478 +**Context:** _Abrangência: Backend + infra de testes (imagem d
+          +o `nestjs-api` com FFmpeg, isolamento de Redis e MinIO compart
+          +ilhados). Fecha a MD-3 da validação da Fase 03. Depende do TD-
+          +01, TD-02, TD-04, TD-05 e TD-06._ O testing guide (`artifacts/
+          +future-types.md`) só orienta "Processor com lógica: Unit + Int
+          +egration (DB/storage reais)" e "Service com side-effect (stora
+          +ge): Integration com serviço real ou adapter local". Ele não c
+          +obre FFmpeg, como o E2E espera o worker, nem o isolamento da f
+          +ila. **Restrições do desafio:** "Não mocke o que dá para testa
+          +r de verdade com a infra do Compose" e "fila, worker e storage
+          + precisam ser exercitados pelos testes". **Fatos do repositóri
+          +o:** os testes rodam **dentro do container `nestjs-api`** (`Do
+          +ckerfile.dev` = `node:25.6.0-slim`, **sem FFmpeg**). Embora o 
+          +script `npm test` não passe `--runInBand`, a suíte **não roda 
+          +integrações em paralelo na prática**: os testes de integração 
+          +compartilham o mesmo Postgres (o `migrations.integration-spec.
+          +ts` apaga e recria o schema), e rodar sem `--runInBand` gerou 
+          +37 falhas na baseline desta fase (informado na sessão de 2026-
+          +11-20). A execução obrigatória é `npm test -- --runInBand` (re
+          +gistrado em `docs/phases/phase-02-auth/progress.md`: "Tests re
+          +quire --runInBand to avoid parallel FK violations between suit
+          +es sharing the same DB", e no `README.md`: "Testes de integraç
+          +ão/e2e rodam com `--runInBand`"). Já existe o precedente de se
+          +rviço real do Compose em teste: o Mailpit (`src/test/mailpit.t
+          +s`, `mail.service.integration-spec.ts`). A doc do BullMQ descr
+          +eve `job.waitUntilFinished(queueEvents)` como "conveniência de
+          + teste no Node.js" (context7, `/taskforcesh/bullmq` v5.81.5). 
+      479 
+      480  **Options:**
+      481 
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Added 1 line, removed 1 line
+      475 
+      476  **Capability:** Transversal — covers: "Serviço de armazenament
+           o de arquivos (vídeos e thumbnails)", "Serviço de processament
+           o em segundo plano (filas)", "Processamento automático do víde
+           o após upload (extração de duração e metadados)", "Geração aut
+           omática de thumbnail a partir de um frame do vídeo"
+      477 
+      478 -**Context:** _Abrangência: Backend + infra de testes (imagem d
+          -o `nestjs-api` com FFmpeg, isolamento de Redis e MinIO compart
+          -ilhados). Fecha a MD-3 da validação da Fase 03. Depende do TD-
+          -01, TD-02, TD-04, TD-05 e TD-06._ O testing guide (`artifacts/
+          -future-types.md`) só orienta "Processor com lógica: Unit + Int
+          -egration (DB/storage reais)" e "Service com side-effect (stora
+          -ge): Integration com serviço real ou adapter local". Ele não c
+          -obre FFmpeg, como o E2E espera o worker, nem o isolamento da f
+          -ila. **Restrições do desafio:** "Não mocke o que dá para testa
+          -r de verdade com a infra do Compose" e "fila, worker e storage
+          - precisam ser exercitados pelos testes". **Fatos do repositóri
+          -o:** os testes rodam **dentro do container `nestjs-api`** (`Do
+          -ckerfile.dev` = `node:25.6.0-slim`, **sem FFmpeg**). Embora o 
+          -script `npm test` não passe `--runInBand`, a suíte **não roda 
+          -integrações em paralelo na prática**: os testes de integração 
+          -compartilham o mesmo Postgres (o `migrations.integration-spec.
+          -ts` apaga e recria o schema), e rodar sem `--runInBand` gerou 
+          -37 falhas na baseline desta fase (informado na sessão de 2026-
+          -11-20). A execução obrigatória é `npm test -- --runInBand` (re
+          -gistrado em `docs/phases/phase-02-auth/progress.md`: "Tests re
+          -quire --runInBand to avoid parallel FK violations between suit
+          -es sharing the same DB", e no `README.md`: "Testes de integraç
+          -ão/e2e rodam com `--runInBand`"). Já existe o precedente de se
+          -rviço real do Compose em teste: o Mailpit (`src/test/mailpit.t
+          -s`, `mail.service.integration-spec.ts`). A doc do BullMQ descr
+          -eve `job.waitUntilFinished(queueEvents)` como "conveniência de
+          - teste no Node.js" (context7, `/taskforcesh/bullmq` v5.81.5). 
+      478 +**Context:** _Abrangência: Backend + infra de testes (imagem d
+          +o `nestjs-api` com FFmpeg, isolamento de Redis e MinIO compart
+          +ilhados). Fecha a MD-3 da validação da Fase 03. Depende do TD-
+          +01, TD-02, TD-04, TD-05 e TD-06._ O testing guide (`artifacts/
+          +future-types.md`) só orienta "Processor com lógica: Unit + Int
+          +egration (DB/storage reais)" e "Service com side-effect (stora
+          +ge): Integration com serviço real ou adapter local". Ele não c
+          +obre FFmpeg, como o E2E espera o worker, nem o isolamento da f
+          +ila. **Restrições do desafio:** "Não mocke o que dá para testa
+          +r de verdade com a infra do Compose" e "fila, worker e storage
+          + precisam ser exercitados pelos testes". **Fatos do repositóri
+          +o:** os testes rodam **dentro do container `nestjs-api`** (`Do
+          +ckerfile.dev` = `node:25.6.0-slim`, **sem FFmpeg**). Embora o 
+          +script `npm test` não passe `--runInBand`, a suíte **não roda 
+          +integrações em paralelo na prática**: os testes de integração 
+          +compartilham o mesmo Postgres (o `migrations.integration-spec.
+          +ts` apaga e recria o schema), e rodar sem `--runInBand` gerou 
+          +37 falhas na baseline desta fase (informado na sessão de 2026-
+          +11-20). A execução obrigatória é `npm test -- --runInBand` (re
+          +gistrado em `docs/phases/phase-02-auth/progress.md`: "Tests re
+          +quire --runInBand to avoid parallel FK violations between suit
+          +es sharing the same DB", e no `README.md`: "Testes de integraç
+          +ão/e2e rodam com `--runInBand`"). Já existe o precedente de se
+          +rviço real do Compose em teste: o Mailpit (`src/test/mailpit.t
+          +s`, `mail.service.integration-spec.ts`). A doc do BullMQ descr
+          +eve `job.waitUntilFinished(queueEvents)` como "conveniência de
+          + teste no Node.js" (context7, `/taskforcesh/bullmq` v5.81.5). 
+          +**Definition of Done desta fase:** o critério "a suíte complet
+          +a passa" do `CLAUDE.md` é verificado com `npm test -- --runInB
+          +and`.                                                         
+      479 
+      480  **Options:**
+      481 
+
+● Update(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Added 1 line, removed 1 line
+      480  **Options:**
+      481 
+      482  ### Option A: Infra real do Compose + worker instanciado no pr
+           ocesso do teste
+      483 -- **Unit (`*.spec.ts`):** só ramos de lógica pura. Mock de `ch
+          -ild_process` restrito ao `FfmpegService` (parse do JSON, timeo
+          -ut, stderr, exit code ≠ 0) e à classificação de erro do proces
+          -sor (transitório vs `UnrecoverableError`, TD-10). **Integratio
+          -n (`*.integration-spec.ts`):** Redis, MinIO e Postgres **reais
+          -** do Compose. `FfmpegService` com **FFmpeg real** sobre uma f
+          -ixture pequena gerada com `ffmpeg -f lavfi -i testsrc=duration
+          -=2:size=320x240:rate=10` _(parâmetros: sugestão — sem origem n
+          -ormativa)_, mais uma fixture "não é vídeo" (texto) para o cami
+          -nho `failed`. O processor é chamado com `process(job)` direto,
+          - contra objeto real no MinIO e linha real no banco. **E2E (`*.
+          -e2e-spec.ts`):** sobe `AppModule` (HTTP via supertest) **e** o
+          - `WorkerModule` (TD-04) no mesmo processo Jest. O fluxo comple
+          -to (init → PUT das partes nas URLs assinadas → complete) roda 
+          -contra o MinIO real, e o teste aguarda com `job.waitUntilFinis
+          -hed(queueEvents, timeout)` ou polling do status no banco, depo
+          -is afirma `ready`, a duração e a thumbnail no storage. **Isola
+          -mento:** `prefix` do BullMQ e bucket (ou prefixo de chave) pró
+          -prios de teste, incluindo `JEST_WORKER_ID` por causa do parale
+          -lismo, para que o container `video-worker` rodando não consuma
+          - jobs do teste. **Imagem:** `ffmpeg` instalado via apt no `Doc
+          -kerfile.dev`, a mesma imagem que serve a API e o worker (TD-04
+          -).                                                            
+      483 +- **Unit (`*.spec.ts`):** só ramos de lógica pura. Mock de `ch
+          +ild_process` restrito ao `FfmpegService` (parse do JSON, timeo
+          +ut, stderr, exit code ≠ 0) e à classificação de erro do proces
+          +sor (transitório vs `UnrecoverableError`, TD-10). **Integratio
+          +n (`*.integration-spec.ts`):** Redis, MinIO e Postgres **reais
+          +** do Compose. `FfmpegService` com **FFmpeg real** sobre uma f
+          +ixture pequena gerada com `ffmpeg -f lavfi -i testsrc=duration
+          +=2:size=320x240:rate=10` _(parâmetros: sugestão — sem origem n
+          +ormativa)_, mais uma fixture "não é vídeo" (texto) para o cami
+          +nho `failed`. O processor é chamado com `process(job)` direto,
+          + contra objeto real no MinIO e linha real no banco. **E2E (`*.
+          +e2e-spec.ts`):** sobe `AppModule` (HTTP via supertest) **e** o
+          + `WorkerModule` (TD-04) no mesmo processo Jest. O fluxo comple
+          +to (init → PUT das partes nas URLs assinadas → complete) roda 
+          +contra o MinIO real, e o teste aguarda com `job.waitUntilFinis
+          +hed(queueEvents, timeout)` ou polling do status no banco, depo
+          +is afirma `ready`, a duração e a thumbnail no storage. **Isola
+          +mento:** contra o container `video-worker` do Compose, que fic
+          +a rodando com a config de dev. Os testes usam `prefix` do Bull
+          +MQ e bucket (ou prefixo de chave) próprios de teste, para que 
+          +esse worker não consuma jobs do teste nem os testes poluam os 
+          +objetos de dev. Como a suíte roda serializada (`--runInBand`),
+          + um prefixo fixo de teste basta. Sufixar com `JEST_WORKER_ID` 
+          +seria opcional, só se um dia a suíte passar a rodar em paralel
+          +o. **Imagem:** `ffmpeg` instalado via apt no `Dockerfile.dev`,
+          + a mesma imagem que serve a API e o worker (TD-04).           
+      484  - **Pros:** cumpre as duas restrições do desafio: fila, worker
+           , storage e FFmpeg exercitados de verdade, mock só em unit. O
+           E2E é determinístico (o worker é do mesmo build do teste, sem
+           depender de outro container estar de pé e atualizado). A fixtu
+           re gerada por `lavfi` dispensa binário commitado e prova que o
+            FFmpeg da imagem funciona. Segue o precedente do Mailpit.
+      485  - **Cons:** a imagem da API ganha o FFmpeg, mesmo sem usá-lo e
+           m runtime (cerca de 100MB+ no slim, _estimativa não medida_).
+           E2E mais lentos (processamento real) e sensíveis a timeout. O
+           processo de teste acumula conexões Redis (Queue, Worker, Queue
+           Events) que precisam de `close()` no `afterAll` para o Jest en
+           cerrar.
+      486  - **Libraries:** as da fila e do storage (TD-01, TD-02). Nenhu
+           ma lib de teste nova.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Salvei as 3 alterações no TD-13 de
+  docs/decisions/technical-decisions-phase-03-videos.md, exatamente como no diff
+  que você aprovou:
+
+  1. Context: saiu a frase de que as integrações rodam em paralelo. Entrou o
+     fato correto: os testes compartilham o Postgres (o
+     migrations.integration-spec.ts apaga e recria o schema), e rodar sem
+     --runInBand gerou 37 falhas na baseline. As fontes citadas são o
+     phase-02-auth/progress.md e o README.md. O número de 37 falhas não está
+     escrito em nenhum arquivo do repositório, então ficou atribuído ao que você
+     informou nesta sessão.
+  2. Definition of Done: acrescentei no Context que "a suíte completa passa" é
+     verificado com npm test -- --runInBand.
+  3. Isolamento na Option A: o isolamento agora é contra o container
+     video-worker do Compose, com prefixo de fila e bucket (ou prefixo de chave)
+     próprios de teste. Um prefixo fixo basta. O JEST_WORKER_ID só aparece como
+     opcional, para o caso de a suíte um dia rodar em paralelo.
+
+  Os campos Decision, os outros TDs e a tabela de resumo não mudaram. Não sobrou
+  nenhuma outra menção a JEST_WORKER_ID ou a paralelismo de testes no
+  documento.
+
+  Nada foi commitado. O próximo passo continua sendo /plan-context 
+  phase-03-videos, porque o context.md está desatualizado em relação ao doc de
+  decisões.
+
+✻ Baked for 44s · done Friday 5:19 PM
+
+※ recap: Estamos fechando as issues MD-1 a MD-3 da Fase 03: os TD-11 a TD-13 foram adicionados ao doc de decisões, e a correção do --runInBand no TD-13 está salva, sem commit. Próximo passo: rodar /plan-context phase-03-videos.
+
+❯ Commite docs/decisions/technical-decisions-phase-03-videos.md com a mensagem  
+  "docs: phase 03 TDs 11-13 (research round 2)" e faça push.                    
+
+  Pushed to feature/phase-03-videos (ctrl+o to expand)
+
+● Commitei docs/decisions/technical-decisions-phase-03-videos.md em
+  feature/phase-03-videos (commit 55fbc99, mensagem "docs: phase 03 TDs 11-13
+  (research round 2)") e fiz o push para origin. Esse era o único arquivo
+  modificado na working tree.
+
+  O próximo passo é /plan-context phase-03-videos, para regenerar o context.md
+  com os TD-11 a TD-13.
+
+✻ Crunched for 12s · done Saturday 10:17 AM
+
+❯ /export _claude-sessions/17-fase03-research-round2.txt                        
+  ⎿  Conversation exported to /home/teiabessa/mbaengsoft/mba-ia-streamTube-green
+     field/_claude-sessions/17-fase03-research-round2.txt
+
+❯ /plan-context phase-03-videos O diretório alvo é                              
+docs/phases/phase-03-videos/. TDs pending de propósito. Na detecção de UI, é    
+falso positivo (fase só backend). Como doc correlacionado, inclua apenas        
+technical-decisions-openapi-docs-nestjs. Responda em português.                 
+
+● Primeiro confiro as verificações iniciais (slug, diretório e sinal de UI) e
+  depois disparo os subagentes em paralelo.
+
+  Ran 1 shell command (ctrl+o to expand)
+  ⎿  1 skill available
+
+● O sinal de UI veio só do trecho "ui" dentro de "arquivos", em dois bullets. É
+  o falso positivo que você indicou, então a seção ## UI Inventory fica omitida.
+  Disparando os subagentes:
+
+● 5 background agents launched (↓ to manage)
+   ├ plan-reader (Extract phase 03 scope)
+   ├ decisions-reader (Index phase 03 TDs)
+   ├ decisions-detail-reader (Extract decided TD details)
+   ├ decisions-correlator (Correlate ad-hoc decisions)
+   └ phases-reader (Read prior phases inheritance)
+
+● Cinco subagentes foram disparados em paralelo; enquanto rodam, carrego o
+  testing guide para a seção de testes. · summary
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+● A tabela do testing guide é a mesma da versão anterior do context.md. Agora
+  aguardo os subagentes terminarem.
+
+✻ Sautéed for 35s · done 7:13 PM
+
+● Agent "Correlate ad-hoc decisions" finished · 18s
+
+● O correlator listou o openapi-docs-nestjs (médio) e três docs de frontend
+  (baixo). Conforme você indicou, só o openapi-docs-nestjs entra, então não vou
+  abrir a pergunta de confirmação. Aguardo os outros quatro subagentes.
+
+✻ Worked for 5s · done 7:13 PM
+
+● Agent "Extract decided TD details" finished · 22s
+
+● O leitor de detalhes terminou: nenhum TD decidido ainda, e o trace de filtros
+  cobriu os 8 docs. Faltam três subagentes.
+✻ Sautéed for 2s · done 7:13 PM
+
+● Agent "Extract phase 03 scope" finished · 30s
+
+● O leitor do plano terminou: os 9 bullets da Fase 03 conferem com a versão
+  anterior. Ainda faltam o índice de TDs e as fases anteriores.
+
+✻ Churned for 2s · done 7:13 PM
+
+● Agent "Index phase 03 TDs" finished · 33s
+
+● O índice de TDs voltou com os 13 TDs, todos pendentes. As verificações dos
+  dois traces passaram:
+  - Contagem: 8 docs em cada trace, igual ao glob da pasta docs/decisions/.
+  - Conjunto mantido: os dois leitores mantiveram o mesmo, só phase-03-videos.
+  - TDs decididos: 0 esperados e 0 emitidos.
+
+  Falta só o leitor das fases anteriores.
+
+✻ Cogitated for 5s · done 7:13 PM
+
+● Agent "Read prior phases inheritance" finished · 1m 6s
+
+● Os cinco subagentes terminaram. Antes de montar o arquivo, confiro o bloco de
+  TDs do openapi-docs-nestjs (o doc correlacionado) e coleto os mtimes das
+  fontes.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● O openapi-docs-nestjs não mudou desde a última versão, então o bloco dos 3 TDs
+  segue válido. Estou gravando o context.md regenerado. · summary
+
+  Read 1 file (ctrl+o to expand)
+
+● O restante do arquivo sai idêntico na regeneração, então só mudam o mtime do
+  doc de decisões, o índice (TD-11 a TD-13) e a tabela de cobertura. · summary
+
+● Update(docs/phases/phase-03-videos/context.md)
+  ⎿  Rejected update to docs/phases/phase-03-videos/context.md
+
+● Update(docs/phases/phase-03-videos/context.md)
+  ⎿  Rejected update to docs/phases/phase-03-videos/context.md
+
+● Update(docs/phases/phase-03-videos/context.md)
+  ⎿  Rejected update to docs/phases/phase-03-videos/context.md
+
+! grep -nE "Affected subprojects|Deferred subprojects"                          
+  docs/phases/phase-03-videos/context.md                                        
+  ⎿  36:**Affected subprojects:** `nestjs-project/` _(origem: `docs/decisio
+     ns/technical-decisions-phase-03-videos.md` — fase só backend)_
+     38:**Deferred subprojects:** `next-frontend/` — sem slice de frontend
+     … +2 lines (ctrl+o to expand)
+
+● As três edições foram rejeitadas, então o context.md continua exatamente como
+  estava. O mtime do doc de decisões ainda está em 15:10:25, sem TD-11 a TD-13 e
+  sem a cobertura nova. O arquivo segue desatualizado em relação ao doc de
+  decisões.
+
+  O seu grep mostra que as linhas de Affected subprojects e Deferred subprojects
+  (36 e 38) já estão no texto que eu ia manter. Elas apontam para
+  nestjs-project/ como único subprojeto afetado e para next-frontend/ como
+  adiado, os dois com origem no technical-decisions-phase-03-videos.md. O
+  plan-reader confirmou que o project-plan.md não fala disso para a Fase 03; a
+  informação vem do doc de decisões.
+
+  Estou parada esperando sua orientação. Me diga o que quer ajustar, por
+  exemplo:
+  - reescrever essas duas linhas de outro jeito, como o texto que o plan-reader
+    devolveu;
+  - regenerar o arquivo inteiro com Write em vez de editar trechos;
+  - outra mudança antes de aplicar o índice e a cobertura.
+
+✻ Baked for 7s · done 7:30 PM
+
+❯ volte na opção anterior                                                       
+
+● Update(docs/phases/phase-03-videos/context.md)
+  ⎿  Added 1 line, removed 1 line
+      3  name: phase-03-videos
+      4  sources_mtime:
+      5    docs/project-plan.md: "2026-11-17T11:04:44-03:00"
+      6 -  docs/decisions/technical-decisions-phase-03-videos.md: "2026-1
+        -1-20T15:10:25-03:00"                                            
+      6 +  docs/decisions/technical-decisions-phase-03-videos.md: "2026-1
+        +1-20T17:19:28-03:00"                                            
+      7    docs/decisions/technical-decisions-openapi-docs-nestjs.md: "20
+         26-11-17T11:04:44-03:00"
+      8    docs/phases/phase-01-configuracao-base/context.md: "2026-11-17
+         T11:04:44-03:00"
+      9    docs/phases/phase-02-auth/context.md: "2026-11-17T11:04:44-03:
+         00"
+
+● Update(docs/phases/phase-03-videos/context.md)
+  ⎿  Added 3 lines
+      58  | phase-03-videos/TD-08 | phase | Cross-layer | Streaming e Dow
+          nload | pending | — | — |
+      59  | phase-03-videos/TD-09 | phase | Cross-layer | Modelo de Statu
+          s do Vídeo | pending | — | — |
+      60  | phase-03-videos/TD-10 | phase | Backend | Política de Retry e
+           Falha Final do Processamento | pending | — | — |
+      61 +| phase-03-videos/TD-11 | phase | Cross-layer | Formatos Aceito
+         +s e Validação do Arquivo de Vídeo | pending | — | — |          
+      62 +| phase-03-videos/TD-12 | phase | Cross-layer | Uploads Abandon
+         +ados — Destino do Rascunho no Banco | pending | — | — |        
+      63 +| phase-03-videos/TD-13 | phase | Backend | Estratégia de Teste
+         +s de Worker, Fila, Storage e FFmpeg | pending | — | — |        
+      64 
+      65  _Source files:_
+      66 
+
+● Update(docs/phases/phase-03-videos/context.md)
+  ⎿  Added 6 lines, removed 6 lines
+      70 
+      71  | Capability (from project-plan.md) | Covered by |
+      72  |-----------------------------------|------------|
+      73 -| Serviço de armazenamento de arquivos (vídeos e thumbnails) | 
+         -phase-03-videos/TD-02 |                                        
+      74 -| Serviço de processamento em segundo plano (filas) | phase-03-
+         -videos/TD-01, phase-03-videos/TD-04 |                          
+      75 -| Upload de vídeos com suporte a arquivos de até 10GB sem impac
+         -to na performance | phase-03-videos/TD-03 |                    
+      76 -| Pré-cadastro automático do vídeo como rascunho ao iniciar o u
+         -pload | phase-03-videos/TD-03, phase-03-videos/TD-09 |         
+      77 -| Processamento automático do vídeo após upload (extração de du
+         -ração e metadados) | phase-03-videos/TD-04, phase-03-videos/TD-
+         -05, phase-03-videos/TD-06, phase-03-videos/TD-09, phase-03-vide
+         -os/TD-10 |                                                     
+      78 -| Geração automática de thumbnail a partir de um frame do vídeo
+         - | phase-03-videos/TD-04, phase-03-videos/TD-05, phase-03-video
+         -s/TD-06 |                                                      
+      73 +| Serviço de armazenamento de arquivos (vídeos e thumbnails) | 
+         +phase-03-videos/TD-02, phase-03-videos/TD-13 |                 
+      74 +| Serviço de processamento em segundo plano (filas) | phase-03-
+         +videos/TD-01, phase-03-videos/TD-04, phase-03-videos/TD-13 |   
+      75 +| Upload de vídeos com suporte a arquivos de até 10GB sem impac
+         +to na performance | phase-03-videos/TD-03, phase-03-videos/TD-1
+         +1 |                                                            
+      76 +| Pré-cadastro automático do vídeo como rascunho ao iniciar o u
+         +pload | phase-03-videos/TD-03, phase-03-videos/TD-09, phase-03-
+         +videos/TD-12 |                                                 
+      77 +| Processamento automático do vídeo após upload (extração de du
+         +ração e metadados) | phase-03-videos/TD-04, phase-03-videos/TD-
+         +05, phase-03-videos/TD-06, phase-03-videos/TD-09, phase-03-vide
+         +os/TD-10, phase-03-videos/TD-11, phase-03-videos/TD-13 |       
+      78 +| Geração automática de thumbnail a partir de um frame do vídeo
+         + | phase-03-videos/TD-04, phase-03-videos/TD-05, phase-03-video
+         +s/TD-06, phase-03-videos/TD-13 |                               
+      79  | URL única por vídeo, sem conflito com outros vídeos | phase-0
+          3-videos/TD-07 |
+      80  | Reprodução via streaming (sem necessidade de download complet
+          o) | phase-03-videos/TD-08 |
+      81  | Download do vídeo pelo usuário | phase-03-videos/TD-08 |
+
+● Entendi "voltar à opção anterior" como aplicar as três edições que você tinha
+  rejeitado. Já apliquei; se quis dizer outra coisa, me avise que eu reverto. O
+  context.md agora está em dia com o doc de decisões.
+
+  O que mudou em docs/phases/phase-03-videos/context.md:
+  - sources_mtime: o doc de decisões da fase passou de 15:10:25 para
+    2026-11-20T17:19:28-03:00.
+  - Decisions Index: entraram TD-11 (Cross-layer), TD-12 (Cross-layer) e TD-13
+    (Backend), os três pending.
+  - Capability Coverage: os TDs novos aparecem nos bullets que citam:
+    - TD-11 em "Upload…" e "Processamento automático…";
+    - TD-12 em "Pré-cadastro…";
+    - TD-13 em armazenamento, filas, processamento e thumbnail.
+
+  O resto do arquivo continua igual, incluindo as linhas de Affected e Deferred
+  subprojects que você consultou:
+  - nenhum TD decidido;
+  - as mesmas heranças das Fases 01/02 e do openapi-docs-nestjs, que é o único
+    doc correlacionado, como você pediu;
+  - as mesmas convenções e capabilities adiadas;
+  - a mesma tabela do testing guide.
+
+  A seção ## UI Inventory continua de fora: o sinal de UI vinha só do "ui"
+  dentro de "arquivos".
+
+  O validation.md ficou desatualizado. O próximo passo é /plan-validate 
+  phase-03-videos; as MD-1 a MD-3 devem virar OQs dos TD-11 a TD-13. Nada foi
+  commitado.
+
+✻ Brewed for 16s · done 8:02 PM
+
+※ recap: Você está planejando a Fase 03 (vídeos) pelo pipeline, e o context.md já foi regenerado com os TD-11 a TD-13. O próximo passo é rodar /plan-validate phase-03-videos; nada foi commitado ainda.
+
+! grep -n "runInBand" docs/decisions/technical-decisions-phase-03-videos.md     
+  ⎿  30:**Context:** _Abrangência: Backend + infra (novo serviço no Compose,
+     novas chaves de env)._ O diagrama C4 marca a fila como "TBD". A API publica
+     um job de processamento quando o upload termina, e o Video Worker o
+     consome (TD-04). A fila precisa de retry com backoff e de um estado de
+     "falha final" observável (TD-10). Por isso, esta é a principal decisão de
+     stack da fase. Também afeta os testes: os de integração rodam com
+     `--runInBand` contra infraestrutura compartilhada, então a fila precisa
+     permitir isolamento por prefixo ou namespace no ambiente de teste.
+     180:**Recommendation:** **Option A** — cumpre o container separado do
+     diagrama sem criar um pacote compartilhado inexistente. O worker é um
+     "modo" da mesma aplicação Nest, com módulo raiz próprio. O isolamento da
+     fila em testes (prefixo por ambiente) deve constar no plano, porque os
+     testes de integração rodam `--runInBand` contra infra compartilhada.
+     478:**Context:** _Abrangência: Backend + infra de testes (imagem do
+     `nestjs-api` com FFmpeg, isolamento de Redis e MinIO compartilhados). Fecha
+     a MD-3 da validação da Fase 03. Depende do TD-01, TD-02, TD-04, TD-05 e
+     TD-06._ O testing guide (`artifacts/future-types.md`) só orienta "Processor
+     com lógica: Unit + Integration (DB/storage reais)" e "Service com
+     side-effect (storage): Integration com serviço real ou adapter local". Ele
+     não cobre FFmpeg, como o E2E espera o worker, nem o isolamento da fila.
+     **Restrições do desafio:** "Não mocke o que dá para testar de verdade com a
+     infra do Compose" e "fila, worker e storage precisam ser exercitados pelos
+     testes". **Fatos do repositório:** os testes rodam **dentro do container
+     `nestjs-api`** (`Dockerfile.dev` = `node:25.6.0-slim`, **sem FFmpeg**).
+     Embora o script `npm test` não passe `--runInBand`, a suíte **não roda
+     integrações em paralelo na prática**: os testes de integração compartilham
+     o mesmo Postgres (o `migrations.integration-spec.ts` apaga e recria o
+     schema), e rodar sem `--runInBand` gerou 37 falhas na baseline desta fase
+     (informado na sessão de 2026-11-20). A execução obrigatória é `npm test --
+     --runInBand` (registrado em `docs/phases/phase-02-auth/progress.md`: "Tests
+     require --runInBand to avoid parallel FK violations between suites sharing
+     the same DB", e no `README.md`: "Testes de integração/e2e rodam com
+     `--runInBand`"). Já existe o precedente de serviço real do Compose em
+     teste: o Mailpit (`src/test/mailpit.ts`,
+     `mail.service.integration-spec.ts`). A doc do BullMQ descreve
+     `job.waitUntilFinished(queueEvents)` como "conveniência de teste no
+     Node.js" (context7, `/taskforcesh/bullmq` v5.81.5). **Definition of Done
+     desta fase:** o critério "a suíte completa passa" do `CLAUDE.md` é
+     verificado com `npm test -- --runInBand`.
+     483:- **Unit (`*.spec.ts`):** só ramos de lógica pura. Mock de
+     `child_process` restrito ao `FfmpegService` (parse do JSON, timeout,
+     stderr, exit code ≠ 0) e à classificação de erro do processor (transitório
+     vs `UnrecoverableError`, TD-10). **Integration (`*.integration-spec.ts`):**
+     Redis, MinIO e Postgres **reais** do Compose. `FfmpegService` com **FFmpeg
+     real** sobre uma fixture pequena gerada com `ffmpeg -f lavfi -i
+     testsrc=duration=2:size=320x240:rate=10` _(parâmetros: sugestão — sem
+     origem normativa)_, mais uma fixture "não é vídeo" (texto) para o caminho
+     `failed`. O processor é chamado com `process(job)` direto, contra objeto
+     real no MinIO e linha real no banco. **E2E (`*.e2e-spec.ts`):** sobe
+     `AppModule` (HTTP via supertest) **e** o `WorkerModule` (TD-04) no mesmo
+     processo Jest. O fluxo completo (init → PUT das partes nas URLs assinadas →
+     complete) roda contra o MinIO real, e o teste aguarda com
+     `job.waitUntilFinished(queueEvents, timeout)` ou polling do status no
+     banco, depois afirma `ready`, a duração e a thumbnail no storage.
+     **Isolamento:** contra o container `video-worker` do Compose, que fica
+     rodando com a config de dev. Os testes usam `prefix` do BullMQ e bucket (ou
+     prefixo de chave) próprios de teste, para que esse worker não consuma jobs
+     do teste nem os testes poluam os objetos de dev. Como a suíte roda
+     serializada (`--runInBand`), um prefixo fixo de teste basta. Sufixar com
+     `JEST_WORKER_ID` seria opcional, só se um dia a suíte passar a rodar em
+     paralelo. **Imagem:** `ffmpeg` instalado via apt no `Dockerfile.dev`, a
+     mesma imagem que serve a API e o worker (TD-04).
+
+● O --runInBand está coerente nos três pontos do doc de decisões:
+
+  - TD-01 (linha 30) e TD-04 (linha 180) já afirmavam que as integrações rodam
+    com --runInBand contra infraestrutura compartilhada e pediam isolamento da
+    fila por prefixo. Isso bate com a correção que você fez.
+  - TD-13 (linhas 478 e 483) tem a versão corrigida: a execução obrigatória é
+    npm test -- --runInBand, com as fontes e a Definition of Done. O isolamento
+    é contra o container video-worker, e o JEST_WORKER_ID aparece só como
+    opcional.
+
+  Não sobrou nenhuma menção a integrações rodando em paralelo, então nada
+  precisa mudar. O context.md já está atualizado com esse doc. O próximo passo
+  continua sendo /plan-validate phase-03-videos.
+
+✻ Churned for 10s · done 8:05 PM
+
+❯ Commite docs/phases/phase-03-videos/context.md e                              
+  _claude-sessions/17-fase03-research-round2.txt com a mensagem "docs: phase 03 
+  plan context (round 2)" e faça push.                                          
+
+  Pushed to feature/phase-03-videos, ran 1 shell command (ctrl+o to expand)
+
+● Commitei os dois arquivos em feature/phase-03-videos (commit 0e95125, mensagem
+  "docs: phase 03 plan context (round 2)") e fiz o push para origin.
+
+  - docs/phases/phase-03-videos/context.md
+  - _claude-sessions/17-fase03-research-round2.txt (antes de commitar, procurei
+    credenciais no arquivo e não achei nenhuma)
+
+  O próximo passo é /plan-validate phase-03-videos.
+✻ Brewed for 16s · done 8:08 PM
