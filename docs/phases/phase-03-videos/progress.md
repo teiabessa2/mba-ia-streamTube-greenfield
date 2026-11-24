@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 1/14 completed
+**SIs:** 2/14 completed
 
 ### SI-03.1 — Infra: Redis, MinIO, FFmpeg e bibliotecas da fase
 - **Status:** completed
@@ -13,9 +13,12 @@
   - **Desvio menor do plano (porta 6379):** a porta `6379` do Redis foi exposta no host (`ports: 6379:6379`), o que o plano não pedia; segue o padrão de `db`/`mailpit`, que também expõem suas portas.
 
 ### SI-03.2 — Configuração de storage e fila (namespaces + schema Joi)
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 22 passing (`src/config/env.validation.integration-spec.ts`; 4 pré-existentes de `SWAGGER_ENABLED` + 18 novos). Regressão: 162 unit/integration + 52 e2e passando; lint e `tsc --noEmit` limpos.
+- **Observations:**
+  - O "`.env` usado pelos testes" é o próprio `nestjs-project/.env` (Jest carrega via `setupFiles: ["dotenv/config"]`; não há `.env.test`). `QUEUE_BACKOFF_DELAY_MS=100` foi gravado nele, então o dev local também usa backoff curto; o `.env.example` mantém `30000`.
+  - Além do schema Joi, o spec boota `ConfigModule.forRoot` com `ignoreEnvFile: true` para cobrir os ACs de boot (aborta sem `S3_BUCKET` / com `QUEUE_BACKOFF_DELAY_MS=-1`, defaults de fila resolvidos, `forcePathStyle` boolean).
+  - `requiredEnv` do spec pré-existente ganhou as cinco chaves S3 obrigatórias, senão os testes de `SWAGGER_ENABLED` falhariam.
 
 ### SI-03.3 — StorageModule: clientes S3 interno e público
 - **Status:** pending
