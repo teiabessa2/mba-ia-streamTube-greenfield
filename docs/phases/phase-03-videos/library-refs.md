@@ -9,7 +9,7 @@ libs:
     context7_id: "/nestjs/bull"
     fetched_at: "2026-11-23T16:12:29-03:00"
   "ioredis":
-    version: "peer de bullmq (não fixada)"
+    version: "^5"
     context7_id: "/redis/ioredis"
     fetched_at: "2026-11-23T16:12:29-03:00"
   "@aws-sdk/client-s3":
@@ -51,6 +51,8 @@ _Uso: TD-01, TD-04 (entrypoint do worker), TD-10._
 ### ioredis
 
 _Uso: conexão da fila (TD-01), peer do bullmq._
+
+> **Versão fixada: `ioredis@^5`, instalado explicitamente.** No `bullmq@6.7.8` o `ioredis` passou a ser peer opcional (`>=5.0.0`) e não vem mais como dependência transitiva; sem ele instalado, `new Queue({ connection: { host, port } })` falha com "BullMQ could not load the optional 'ioredis' package". A v5 é a coberta pelos excertos abaixo.
 
 - `new Redis({ host, port, maxRetriesPerRequest: null })` — `null` desativa o flush de comandos pendentes (o padrão é 20 tentativas), o que é obrigatório para conexões de worker do BullMQ.
 - A reconexão automática é o padrão (`retryStrategy` com backoff exponencial limitado a 5s mais jitter), exceto após `disconnect()`/`quit()`.
