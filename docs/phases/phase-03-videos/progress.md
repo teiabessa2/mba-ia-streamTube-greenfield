@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 3/14 completed
+**SIs:** 4/14 completed
 
 ### SI-03.1 — Infra: Redis, MinIO, FFmpeg e bibliotecas da fase
 - **Status:** completed
@@ -32,9 +32,14 @@
   - `listParts` pagina por `NextPartNumberMarker` (o `ListParts` devolve no máximo 1000 partes por chamada, e um upload pode ter até 10.000).
 
 ### SI-03.4 — Entidade Video + migration + gerador de public_id
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 12 passing (`video.entity.integration-spec.ts` 6, `migrations.integration-spec.ts` 4, `public-id.util.spec.ts` 2). Regressão: 190 unit/integration + 52 e2e passando; lint e `tsc --noEmit` limpos. AC de migration verificado no banco de dev: `migration:run` cria tabela + enum + índices (PK, `public_id` único, `channel_id`), `migration:revert` remove tudo; banco deixado migrado.
+- **Observations:**
+  - Migration `1795621684480-CreateVideos.ts` gerada com `migration:generate` a partir da entidade (só contém `videos` / `video_status`), para que o schema da migration bata com o `synchronize: true` usado pelos specs de entidade no mesmo banco.
+  - `VideoStatus` (enum) e `VideoMetadata` (forma do `jsonb`) ficaram em `src/videos/videos.types.ts`, arquivo não listado no plano.
+  - Relação `Video → Channel` é só `ManyToOne` (unidirecional), como pede a ação 1 e como `RefreshToken → User`; o `channel.entity.ts` não foi tocado (fora do escopo do SI).
+  - `migrations.integration-spec.ts`: o teste de revert existente passou a desfazer primeiro a `CreateVideos` (novo teste) e depois a `CreateAuthTokens`; o `afterAll` reaplica todas.
+  - Com o `DELETE FROM "videos"` no `cleanAllTables`, todo suite que o chama depende de a tabela `videos` existir no banco (mesma premissa já valendo para `refresh_tokens`/`verification_tokens`).
 
 ### SI-03.5 — Endpoint POST /videos (início do upload + pré-cadastro em rascunho)
 - **Status:** pending
