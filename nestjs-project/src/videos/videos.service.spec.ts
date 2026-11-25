@@ -2,13 +2,17 @@ import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { QueryFailedError } from 'typeorm';
 import { ChannelsService } from '../channels/channels.service';
+import { StorageInvalidPartsError } from '../storage/storage.errors';
 import { StorageService } from '../storage/storage.service';
 import type { InitiateUploadDto } from './dto/initiate-upload.dto';
 import { Video } from './entities/video.entity';
 import * as publicIdUtil from './public-id.util';
+import { VideoProcessingQueue } from './video-processing.queue';
 import {
   InvalidPartNumberException,
+  InvalidUploadPartsException,
   UnsupportedVideoFormatException,
+  UploadSizeMismatchException,
   VideoNotFoundException,
   VideoNotInDraftException,
   VideoTooLargeException,
@@ -67,6 +71,7 @@ describe('VideosService.initiateUpload', () => {
         { provide: getRepositoryToken(Video), useValue: repo },
         { provide: StorageService, useValue: storage },
         { provide: ChannelsService, useValue: channels },
+        { provide: VideoProcessingQueue, useValue: { enqueue: jest.fn() } },
       ],
     }).compile();
     service = moduleRef.get(VideosService);
@@ -231,6 +236,7 @@ describe('VideosService.findOwnedDraft / presignParts', () => {
         { provide: getRepositoryToken(Video), useValue: repo },
         { provide: StorageService, useValue: storage },
         { provide: ChannelsService, useValue: channels },
+        { provide: VideoProcessingQueue, useValue: { enqueue: jest.fn() } },
       ],
     }).compile();
     service = moduleRef.get(VideosService);
@@ -317,5 +323,150 @@ describe('VideosService.findOwnedDraft / presignParts', () => {
       ).rejects.toBeInstanceOf(VideoNotInDraftException);
       expect(storage.presignUploadPart).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('VideosService.completeUpload', () => {
+  let service: VideosService;
+  let repo: { findOne: jest.Mock; update: jest.Mock; delete: jest.Mock };
+  let storage: {
+    completeMultipartUpload: jest.Mock;
+    headObjectSize: jest.Mock;
+    deleteObject: jest.Mock;
+  };
+  let queue: { enqueue: jest.Mock };
+
+  const SIZE = 1024;
+  const PARTS = [
+    { part_number: 2, etag: '"etag-2"' },
+    { part_number: 1, etag: '"etag-1"' },
+  ];
+
+  beforeEach(async () => {
+    repo = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 'video-1',
+        public_id: 'Xk3_9aQpL0w',
+        channel_id: CHANNEL.id,
+        status: VideoStatus.DRAFT,
+        storage_key: 'videos/video-1/original',
+        upload_id: 'upload-id',
+        size_bytes: SIZE,
+        part_size: PART_SIZE,
+        part_count: 2,
+      } as Video),
+      update: jest.fn().mockResolvedValue({ affected: 1 }),
+      delete: jest.fn().mockResolvedValue({ affected: 1 }),
+    };
+    storage = {
+      completeMultipartUpload: jest.fn().mockResolvedValue(undefined),
+      headObjectSize: jest.fn().mockResolvedValue(SIZE),
+      deleteObject: jest.fn().mockResolvedValue(undefined),
+    };
+    queue = { enqueue: jest.fn().mockResolvedValue(undefined) };
+
+    const moduleRef = await Test.createTestingModule({
+      providers: [
+        VideosService,
+        { provide: getRepositoryToken(Video), useValue: repo },
+        { provide: StorageService, useValue: storage },
+        {
+          provide: ChannelsService,
+          useValue: { findByUserId: jest.fn().mockResolvedValue(CHANNEL) },
+        },
+        { provide: VideoProcessingQueue, useValue: queue },
+      ],
+    }).compile();
+    service = moduleRef.get(VideosService);
+  });
+
+  it('should complete with the mapped parts, move to processing conditionally and enqueue', async () => {
+    const result = await service.completeUpload(USER_ID, 'video-1', PARTS);
+
+    expect(result).toEqual({
+      id: 'video-1',
+      public_id: 'Xk3_9aQpL0w',
+      status: VideoStatus.PROCESSING,
+    });
+    expect(storage.completeMultipartUpload).toHaveBeenCalledWith(
+      'videos/video-1/original',
+      'upload-id',
+      [
+        { partNumber: 2, etag: '"etag-2"' },
+        { partNumber: 1, etag: '"etag-1"' },
+      ],
+    );
+    expect(repo.update).toHaveBeenCalledWith(
+      { id: 'video-1', status: VideoStatus.DRAFT },
+      { status: VideoStatus.PROCESSING, upload_id: null },
+    );
+    expect(queue.enqueue).toHaveBeenCalledWith('video-1');
+  });
+
+  it('should map StorageInvalidPartsError to InvalidUploadPartsException and keep the draft', async () => {
+    storage.completeMultipartUpload.mockRejectedValueOnce(
+      new StorageInvalidPartsError('InvalidPart', 'bad etag'),
+    );
+
+    await expect(
+      service.completeUpload(USER_ID, 'video-1', PARTS),
+    ).rejects.toBeInstanceOf(InvalidUploadPartsException);
+    expect(repo.update).not.toHaveBeenCalled();
+    expect(repo.delete).not.toHaveBeenCalled();
+    expect(storage.deleteObject).not.toHaveBeenCalled();
+    expect(queue.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('should propagate other storage errors unchanged', async () => {
+    const outage = new Error('connect ECONNREFUSED');
+    storage.completeMultipartUpload.mockRejectedValueOnce(outage);
+
+    await expect(
+      service.completeUpload(USER_ID, 'video-1', PARTS),
+    ).rejects.toBe(outage);
+    expect(queue.enqueue).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['larger', SIZE + 1],
+    ['smaller', SIZE - 1],
+  ])(
+    'should delete the object and the draft without enqueueing when the real size is %s',
+    async (_label, actualSize) => {
+      storage.headObjectSize.mockResolvedValueOnce(actualSize);
+
+      await expect(
+        service.completeUpload(USER_ID, 'video-1', PARTS),
+      ).rejects.toBeInstanceOf(UploadSizeMismatchException);
+      expect(storage.deleteObject).toHaveBeenCalledWith(
+        'videos/video-1/original',
+      );
+      expect(repo.delete).toHaveBeenCalledWith({ id: 'video-1' });
+      expect(repo.update).not.toHaveBeenCalled();
+      expect(queue.enqueue).not.toHaveBeenCalled();
+    },
+  );
+
+  it('should throw VideoNotInDraftException without enqueueing when the conditional update affects 0 rows', async () => {
+    repo.update.mockResolvedValueOnce({ affected: 0 });
+
+    await expect(
+      service.completeUpload(USER_ID, 'video-1', PARTS),
+    ).rejects.toBeInstanceOf(VideoNotInDraftException);
+    expect(queue.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('should not call the storage when the video is no longer in draft', async () => {
+    repo.findOne.mockResolvedValueOnce({
+      id: 'video-1',
+      status: VideoStatus.PROCESSING,
+      upload_id: null,
+    } as Video);
+
+    await expect(
+      service.completeUpload(USER_ID, 'video-1', PARTS),
+    ).rejects.toBeInstanceOf(VideoNotInDraftException);
+    expect(storage.completeMultipartUpload).not.toHaveBeenCalled();
+    expect(queue.enqueue).not.toHaveBeenCalled();
   });
 });

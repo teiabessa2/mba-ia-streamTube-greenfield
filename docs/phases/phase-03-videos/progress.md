@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 6/14 completed
+**SIs:** 7/14 completed
 
 ### SI-03.1 — Infra: Redis, MinIO, FFmpeg e bibliotecas da fase
 - **Status:** completed
@@ -63,9 +63,29 @@
   - O teste de integração envia uma parte pequena (16 bytes); o PUT de 64MiB exigido pela spec está no e2e (`put-de-parte-aceito-pelo-storage` e `lista-somente-a-parte-enviada`).
 
 ### SI-03.7 — Endpoint POST /videos/:id/upload/complete + produtor da fila
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 45 passing. Unit/integration: 39 em 5 suítes:
+  - `videos.service.spec.ts`: 7 unit novos de `completeUpload`.
+  - `video-processing.queue.integration-spec.ts`: 2 testes.
+  - `videos.service.integration-spec.ts`: 1 novo de `completeUpload`, com upload real de 1 parte.
+  - `queue.module.spec.ts`: 1 teste.
+  - `videos.module.spec.ts`: atualizado.
+
+  E2E: `test/videos-upload-complete.e2e-spec.ts` com 6 testes, os 6 cenários da spec. Regressão: 231 unit/integration e 72 e2e passando. `tsc --noEmit` limpo. `npm run lint` com 0 erros e os 23 warnings pré-existentes.
+- **Observations:**
+  - Sobre `QUEUE_NAMES`, `PROCESS_VIDEO_JOB` e `MAX_PART_NUMBER`:
+    - O nome da fila fica em `src/queue/queue.constants.ts` (`QUEUE_NAMES.VIDEOS`), para o worker reusar no SI-03.10.
+    - O nome do job e as `attempts` ficam em `videos.constants.ts` (`PROCESS_VIDEO_JOB`).
+    - `VIDEO_UPLOAD_LIMITS.MAX_PART_NUMBER` (10000) limita o `part_number` e o tamanho do array no `CompleteUploadDto`.
+    - O payload do job é tipado como `ProcessVideoJobData` em `videos.types.ts`.
+  - Arquivos fora da lista do plano:
+    - `dto/complete-upload-response.dto.ts`, DTO de resposta para o OpenAPI.
+    - Helper `src/test/test-queue.ts` (`useTestQueuePrefix(suite)`), que define um `QUEUE_PREFIX` único por suíte antes do compile, no mesmo padrão de `useTestBucket`. Usado no integration da fila, no do service e no e2e.
+  - `@ArrayUnique` recebe um identificador por `part_number`, com optional chaining para itens que não são objetos, e assim um `part_number` repetido vira `VALIDATION_ERROR`.
+  - As duas suítes `describe` já existentes em `videos.service.spec.ts` passaram a prover um mock de `VideoProcessingQueue`, nova dependência do `VideosService`.
+  - Agora o `AppModule` carrega o `QueueModule` pelo `VideosModule`. Por isso todas as suítes e2e abrem uma conexão Redis com o prefixo padrão, sem publicar jobs. A fila é fechada no `app.close()` pelo `onApplicationShutdown` do `@nestjs/bullmq`, e nenhum aviso de handle aberto apareceu.
+  - Ponto não coberto pelo plano: se o `enqueue` falhar depois do `UPDATE` para `processing`, o vídeo fica em `processing` sem job. Fica registrado para o SI-03.10 ou SI-03.11, ou para uma task futura de reconciliação.
+  - No run das suítes do SI, `videos.service.integration-spec.ts` e `videos.module.spec.ts` imprimiram o aviso do `pg` "Calling client.query() when the client is already executing a query is deprecated". Não bloqueia agora, mas vai quebrar no pg@9. Não verifiquei se o aviso já existia antes deste SI; fica como follow-up.
 
 ### SI-03.8 — Endpoint DELETE /videos/:id/upload (abort do rascunho)
 - **Status:** pending

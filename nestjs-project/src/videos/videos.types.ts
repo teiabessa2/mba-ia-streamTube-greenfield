@@ -16,3 +16,8 @@ export interface VideoMetadata {
   formatName: string;
   sizeBytes: number;
 }
+
+/** Payload of the `process-video` job (see Events/Messages). */
+export interface ProcessVideoJobData {
+  videoId: string;
+}

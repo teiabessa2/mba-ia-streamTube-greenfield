@@ -7,6 +7,8 @@ export const VIDEO_UPLOAD_LIMITS = {
   MAX_PARTS_PER_PRESIGN: 100,
   /** Lifetime of presigned upload-part URLs, in seconds (TD-03). */
   PART_URL_EXPIRES_IN_S: 3600,
+  /** Highest part number S3 accepts in a multipart upload. */
+  MAX_PART_NUMBER: 10_000,
 } as const;
 
 /** First-layer allowlist; ffprobe in the worker is the real check (TD-11). */
@@ -24,4 +26,10 @@ export const PUBLIC_ID_MAX_ATTEMPTS = 5;
 
 export const videoStorageKeys = {
   original: (videoId: string) => `videos/${videoId}/original`,
+} as const;
+
+/** `process-video` job on the `videos` queue (phase-03-videos/TD-10). */
+export const PROCESS_VIDEO_JOB = {
+  NAME: 'process-video',
+  ATTEMPTS: 3,
 } as const;

@@ -4,17 +4,23 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { QueryFailedError, Repository } from 'typeorm';
 import { ChannelsService } from '../channels/channels.service';
+import { StorageInvalidPartsError } from '../storage/storage.errors';
 import { StorageService } from '../storage/storage.service';
+import type { CompleteUploadPartDto } from './dto/complete-upload.dto';
+import type { CompleteUploadResponseDto } from './dto/complete-upload-response.dto';
 import type { InitiateUploadDto } from './dto/initiate-upload.dto';
 import type { InitiateUploadResponseDto } from './dto/initiate-upload-response.dto';
 import type { PresignPartsResponseDto } from './dto/presign-parts-response.dto';
 import type { UploadedPartsResponseDto } from './dto/uploaded-parts-response.dto';
 import { Video } from './entities/video.entity';
 import { generatePublicId } from './public-id.util';
+import { VideoProcessingQueue } from './video-processing.queue';
 import { VideoStatus } from './videos.types';
 import {
   InvalidPartNumberException,
+  InvalidUploadPartsException,
   UnsupportedVideoFormatException,
+  UploadSizeMismatchException,
   VideoNotFoundException,
   VideoNotInDraftException,
   VideoTooLargeException,
@@ -62,6 +68,7 @@ export class VideosService {
     private readonly videoRepository: Repository<Video>,
     private readonly channelsService: ChannelsService,
     private readonly storageService: StorageService,
+    private readonly videoProcessingQueue: VideoProcessingQueue,
   ) {}
 
   /**
@@ -185,6 +192,57 @@ export class VideosService {
         .sort((a, b) => a.part_number - b.part_number),
       part_size: video.part_size,
       part_count: video.part_count,
+    };
+  }
+
+  /**
+   * Completes the multipart, checks the real object size against the declared
+   * one and moves the draft to `processing`, publishing `process-video`
+   * (phase-03-videos/TD-03, TD-09).
+   */
+  async completeUpload(
+    userId: string,
+    id: string,
+    parts: CompleteUploadPartDto[],
+  ): Promise<CompleteUploadResponseDto> {
+    const video = await this.findOwnedDraft(userId, id);
+
+    try {
+      await this.storageService.completeMultipartUpload(
+        video.storage_key,
+        video.upload_id as string,
+        parts.map((p) => ({ partNumber: p.part_number, etag: p.etag })),
+      );
+    } catch (err) {
+      // The multipart stays open: the draft is kept and can be resumed.
+      if (err instanceof StorageInvalidPartsError) {
+        throw new InvalidUploadPartsException();
+      }
+      throw err;
+    }
+
+    // A smaller declared size must not bypass the 10GB limit (TD-03).
+    const actualSize = await this.storageService.headObjectSize(
+      video.storage_key,
+    );
+    if (actualSize !== video.size_bytes) {
+      await this.storageService.deleteObject(video.storage_key);
+      await this.videoRepository.delete({ id: video.id });
+      throw new UploadSizeMismatchException();
+    }
+
+    // Conditional on draft, so a concurrent complete cannot enqueue twice.
+    const result = await this.videoRepository.update(
+      { id: video.id, status: VideoStatus.DRAFT },
+      { status: VideoStatus.PROCESSING, upload_id: null },
+    );
+    if (!result.affected) throw new VideoNotInDraftException();
+
+    await this.videoProcessingQueue.enqueue(video.id);
+    return {
+      id: video.id,
+      public_id: video.public_id,
+      status: VideoStatus.PROCESSING,
     };
   }
 
