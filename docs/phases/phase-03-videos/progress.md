@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 5/14 completed
+**SIs:** 6/14 completed
 
 ### SI-03.1 — Infra: Redis, MinIO, FFmpeg e bibliotecas da fase
 - **Status:** completed
@@ -54,9 +54,13 @@
   - O `openapi.json` commitado não foi regenerado: o plano faz isso no SI-03.13.
 
 ### SI-03.6 — Endpoints de partes do upload (gerar URLs + listar para retomar)
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 35 passing — `videos.service.spec.ts` + `videos.service.integration-spec.ts` 27 (10 unit novos de `findOwnedDraft`/`presignParts` + 1 integration novo de `listUploadedParts`, somados aos 16 do SI-03.5), `test/videos-upload-parts.e2e-spec.ts` 8 (os 8 cenários da spec). Regressão: 220 unit/integration + 66 e2e passando; `tsc --noEmit` limpo; `npm run lint` com 0 erros (23 warnings pré-existentes em `src/auth/auth.service*.spec.ts`).
+- **Observations:**
+  - `findOwnedDraft` também trata como `VIDEO_NOT_IN_DRAFT` um `draft` sem `upload_id` (estado inconsistente), e responde `VIDEO_NOT_FOUND` sem consultar `videos` quando o usuário não tem canal.
+  - `MAX_PARTS_PER_PRESIGN` (100) e `PART_URL_EXPIRES_IN_S` (3600) entraram em `videos.constants.ts`; DTOs de resposta para o OpenAPI: `dto/presign-parts-response.dto.ts` e `dto/uploaded-parts-response.dto.ts` (não listados no plano).
+  - Novo helper `test/support/videos-e2e.ts` (`createVideosE2eApp()` reproduzindo o `main.ts` + `registerAndLogin()` do fluxo da Fase 02), usado pelo e2e novo. O `test/videos-initiate-upload.e2e-spec.ts` (SI-03.5) ainda tem esse bootstrap inline; passar a usar o helper fica como follow-up (fora do escopo).
+  - O teste de integração envia uma parte pequena (16 bytes); o PUT de 64MiB exigido pela spec está no e2e (`put-de-parte-aceito-pelo-storage` e `lista-somente-a-parte-enviada`).
 
 ### SI-03.7 — Endpoint POST /videos/:id/upload/complete + produtor da fila
 - **Status:** pending

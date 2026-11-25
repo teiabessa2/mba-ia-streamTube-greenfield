@@ -3,6 +3,10 @@ export const VIDEO_UPLOAD_LIMITS = {
   MAX_SIZE_BYTES: 10_737_418_240,
   /** Fixed part size chosen at upload start: 64 MiB (TD-03). */
   PART_SIZE_BYTES: 67_108_864,
+  /** Max part URLs signed per request (sugestão — sem origem normativa). */
+  MAX_PARTS_PER_PRESIGN: 100,
+  /** Lifetime of presigned upload-part URLs, in seconds (TD-03). */
+  PART_URL_EXPIRES_IN_S: 3600,
 } as const;
 
 /** First-layer allowlist; ffprobe in the worker is the real check (TD-11). */

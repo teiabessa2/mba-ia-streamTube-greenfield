@@ -13,6 +13,7 @@ import {
   cleanAllTables,
   createTestDataSource,
 } from '../test/create-test-data-source';
+import { requestPresigned } from '../test/presigned-http';
 import { useTestBucket } from '../test/test-bucket';
 import { User } from '../users/entities/user.entity';
 import { Video } from './entities/video.entity';
@@ -97,6 +98,40 @@ describe('VideosService (integration: Postgres + MinIO)', () => {
       await expect(
         storageService.listParts(video.storage_key, video.upload_id!),
       ).resolves.toEqual([]);
+    });
+  });
+
+  describe('listUploadedParts', () => {
+    it('should list only the part already sent by PUT to its presigned URL', async () => {
+      const draft = await videosService.initiateUpload(channel.user_id, {
+        file_name: 'clip.mp4',
+        content_type: 'video/mp4',
+        size_bytes: 67108865, // part_count = 2
+      });
+      const video = await dataSource
+        .getRepository(Video)
+        .findOneByOrFail({ id: draft.id });
+      openUploads.push({ key: video.storage_key, uploadId: video.upload_id! });
+      const body = Buffer.from('first-part-bytes');
+
+      const {
+        parts: [part1],
+      } = await videosService.presignParts(channel.user_id, draft.id, [1]);
+      const put = await requestPresigned(part1.url, { method: 'PUT', body });
+      expect(put.statusCode).toBe(200);
+
+      const result = await videosService.listUploadedParts(
+        channel.user_id,
+        draft.id,
+      );
+
+      expect(result).toEqual({
+        parts: [
+          { part_number: 1, etag: put.headers.etag, size_bytes: body.length },
+        ],
+        part_size: 67108864,
+        part_count: 2,
+      });
     });
   });
 });

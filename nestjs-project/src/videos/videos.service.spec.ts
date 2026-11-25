@@ -7,7 +7,10 @@ import type { InitiateUploadDto } from './dto/initiate-upload.dto';
 import { Video } from './entities/video.entity';
 import * as publicIdUtil from './public-id.util';
 import {
+  InvalidPartNumberException,
   UnsupportedVideoFormatException,
+  VideoNotFoundException,
+  VideoNotInDraftException,
   VideoTooLargeException,
 } from './video.exceptions';
 import { VideosService } from './videos.service';
@@ -191,6 +194,128 @@ describe('VideosService.initiateUpload', () => {
         expect.stringMatching(/^videos\/.+\/original$/),
         'upload-id',
       );
+    });
+  });
+});
+
+describe('VideosService.findOwnedDraft / presignParts', () => {
+  let service: VideosService;
+  let repo: { findOne: jest.Mock };
+  let storage: { presignUploadPart: jest.Mock };
+  let channels: { findByUserId: jest.Mock };
+
+  const draft = (overrides: Partial<Video> = {}): Video =>
+    ({
+      id: 'video-1',
+      channel_id: CHANNEL.id,
+      status: VideoStatus.DRAFT,
+      storage_key: 'videos/video-1/original',
+      upload_id: 'upload-id',
+      part_size: PART_SIZE,
+      part_count: 3,
+      ...overrides,
+    }) as Video;
+
+  beforeEach(async () => {
+    repo = { findOne: jest.fn().mockResolvedValue(draft()) };
+    storage = {
+      presignUploadPart: jest.fn((_key: string, _uploadId: string, n: number) =>
+        Promise.resolve(`http://localhost:9000/part-${n}`),
+      ),
+    };
+    channels = { findByUserId: jest.fn().mockResolvedValue(CHANNEL) };
+
+    const moduleRef = await Test.createTestingModule({
+      providers: [
+        VideosService,
+        { provide: getRepositoryToken(Video), useValue: repo },
+        { provide: StorageService, useValue: storage },
+        { provide: ChannelsService, useValue: channels },
+      ],
+    }).compile();
+    service = moduleRef.get(VideosService);
+  });
+
+  describe('findOwnedDraft', () => {
+    it('should look the video up restricted to the caller channel', async () => {
+      await service.findOwnedDraft(USER_ID, 'video-1');
+
+      expect(repo.findOne).toHaveBeenCalledWith({
+        where: { id: 'video-1', channel_id: CHANNEL.id },
+      });
+    });
+
+    it('should throw VideoNotFoundException for a video of another channel', async () => {
+      repo.findOne.mockResolvedValueOnce(null);
+
+      await expect(
+        service.findOwnedDraft(USER_ID, 'video-1'),
+      ).rejects.toBeInstanceOf(VideoNotFoundException);
+    });
+
+    it('should throw VideoNotFoundException when the caller has no channel', async () => {
+      channels.findByUserId.mockResolvedValueOnce(null);
+
+      await expect(
+        service.findOwnedDraft(USER_ID, 'video-1'),
+      ).rejects.toBeInstanceOf(VideoNotFoundException);
+      expect(repo.findOne).not.toHaveBeenCalled();
+    });
+
+    it.each([VideoStatus.PROCESSING, VideoStatus.READY, VideoStatus.FAILED])(
+      'should throw VideoNotInDraftException when status is %s',
+      async (status) => {
+        repo.findOne.mockResolvedValueOnce(draft({ status, upload_id: null }));
+
+        await expect(
+          service.findOwnedDraft(USER_ID, 'video-1'),
+        ).rejects.toBeInstanceOf(VideoNotInDraftException);
+      },
+    );
+  });
+
+  describe('presignParts', () => {
+    it('should throw InvalidPartNumberException when an item is above part_count, without signing', async () => {
+      await expect(
+        service.presignParts(USER_ID, 'video-1', [1, 4]),
+      ).rejects.toBeInstanceOf(InvalidPartNumberException);
+      expect(storage.presignUploadPart).not.toHaveBeenCalled();
+    });
+
+    it('should accept the last part (n = part_count)', async () => {
+      await expect(
+        service.presignParts(USER_ID, 'video-1', [3]),
+      ).resolves.toMatchObject({ parts: [{ part_number: 3 }] });
+    });
+
+    it('should return the parts in ascending order with expires_in 3600', async () => {
+      const result = await service.presignParts(USER_ID, 'video-1', [3, 1, 2]);
+
+      expect(result).toEqual({
+        parts: [
+          { part_number: 1, url: 'http://localhost:9000/part-1' },
+          { part_number: 2, url: 'http://localhost:9000/part-2' },
+          { part_number: 3, url: 'http://localhost:9000/part-3' },
+        ],
+        expires_in: 3600,
+      });
+      expect(storage.presignUploadPart).toHaveBeenCalledWith(
+        'videos/video-1/original',
+        'upload-id',
+        1,
+        3600,
+      );
+    });
+
+    it('should propagate VideoNotInDraftException without signing', async () => {
+      repo.findOne.mockResolvedValueOnce(
+        draft({ status: VideoStatus.PROCESSING }),
+      );
+
+      await expect(
+        service.presignParts(USER_ID, 'video-1', [1]),
+      ).rejects.toBeInstanceOf(VideoNotInDraftException);
+      expect(storage.presignUploadPart).not.toHaveBeenCalled();
     });
   });
 });

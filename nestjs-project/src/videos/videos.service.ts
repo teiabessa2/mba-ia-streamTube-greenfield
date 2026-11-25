@@ -7,10 +7,16 @@ import { ChannelsService } from '../channels/channels.service';
 import { StorageService } from '../storage/storage.service';
 import type { InitiateUploadDto } from './dto/initiate-upload.dto';
 import type { InitiateUploadResponseDto } from './dto/initiate-upload-response.dto';
+import type { PresignPartsResponseDto } from './dto/presign-parts-response.dto';
+import type { UploadedPartsResponseDto } from './dto/uploaded-parts-response.dto';
 import { Video } from './entities/video.entity';
 import { generatePublicId } from './public-id.util';
+import { VideoStatus } from './videos.types';
 import {
+  InvalidPartNumberException,
   UnsupportedVideoFormatException,
+  VideoNotFoundException,
+  VideoNotInDraftException,
   VideoTooLargeException,
 } from './video.exceptions';
 import {
@@ -111,6 +117,75 @@ export class VideosService {
       await this.storageService.abortMultipartUpload(storageKey, uploadId);
       throw err;
     }
+  }
+
+  /**
+   * Loads a draft owned by the caller's channel. Missing or foreign videos are
+   * reported as not found, without revealing that they exist.
+   */
+  async findOwnedDraft(userId: string, id: string): Promise<Video> {
+    const channel = await this.channelsService.findByUserId(userId);
+    const video = channel
+      ? await this.videoRepository.findOne({
+          where: { id, channel_id: channel.id },
+        })
+      : null;
+    if (!video) throw new VideoNotFoundException();
+    if (video.status !== VideoStatus.DRAFT || !video.upload_id) {
+      throw new VideoNotInDraftException();
+    }
+    return video;
+  }
+
+  /** Signs (or re-signs) PUT URLs for the requested parts, in ascending order. */
+  async presignParts(
+    userId: string,
+    id: string,
+    partNumbers: number[],
+  ): Promise<PresignPartsResponseDto> {
+    const video = await this.findOwnedDraft(userId, id);
+    if (partNumbers.some((n) => n > video.part_count)) {
+      throw new InvalidPartNumberException(video.part_count);
+    }
+
+    const expiresIn = VIDEO_UPLOAD_LIMITS.PART_URL_EXPIRES_IN_S;
+    const uploadId = video.upload_id as string;
+    const sorted = [...partNumbers].sort((a, b) => a - b);
+    const parts = await Promise.all(
+      sorted.map(async (partNumber) => ({
+        part_number: partNumber,
+        url: await this.storageService.presignUploadPart(
+          video.storage_key,
+          uploadId,
+          partNumber,
+          expiresIn,
+        ),
+      })),
+    );
+    return { parts, expires_in: expiresIn };
+  }
+
+  /** Lists the parts the storage already received, to resume an upload. */
+  async listUploadedParts(
+    userId: string,
+    id: string,
+  ): Promise<UploadedPartsResponseDto> {
+    const video = await this.findOwnedDraft(userId, id);
+    const uploaded = await this.storageService.listParts(
+      video.storage_key,
+      video.upload_id as string,
+    );
+    return {
+      parts: uploaded
+        .map((p) => ({
+          part_number: p.partNumber,
+          etag: p.etag,
+          size_bytes: p.sizeBytes,
+        }))
+        .sort((a, b) => a.part_number - b.part_number),
+      part_size: video.part_size,
+      part_count: video.part_count,
+    };
   }
 
   private async saveDraftWithUniquePublicId(
