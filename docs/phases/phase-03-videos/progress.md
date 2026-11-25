@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 2/14 completed
+**SIs:** 3/14 completed
 
 ### SI-03.1 — Infra: Redis, MinIO, FFmpeg e bibliotecas da fase
 - **Status:** completed
@@ -16,14 +16,20 @@
 - **Status:** completed
 - **Tests:** 22 passing (`src/config/env.validation.integration-spec.ts`; 4 pré-existentes de `SWAGGER_ENABLED` + 18 novos). Regressão: 162 unit/integration + 52 e2e passando; lint e `tsc --noEmit` limpos.
 - **Observations:**
-  - O "`.env` usado pelos testes" é o próprio `nestjs-project/.env` (Jest carrega via `setupFiles: ["dotenv/config"]`; não há `.env.test`). `QUEUE_BACKOFF_DELAY_MS=100` foi gravado nele, então o dev local também usa backoff curto; o `.env.example` mantém `30000`.
+  - **`.env` compartilhado entre testes e dev:** os testes e o dev usam o mesmo `nestjs-project/.env` (o Jest o carrega via `setupFiles: ["dotenv/config"]`; não há `.env.test`). Por isso o `.env` local usa `QUEUE_BACKOFF_DELAY_MS=100` (backoff curto exigido pelos testes de integração/E2E, também vigente no dev local), enquanto o `.env.example` mantém o padrão `30000`.
   - Além do schema Joi, o spec boota `ConfigModule.forRoot` com `ignoreEnvFile: true` para cobrir os ACs de boot (aborta sem `S3_BUCKET` / com `QUEUE_BACKOFF_DELAY_MS=-1`, defaults de fila resolvidos, `forcePathStyle` boolean).
   - `requiredEnv` do spec pré-existente ganhou as cinco chaves S3 obrigatórias, senão os testes de `SWAGGER_ENABLED` falhariam.
 
 ### SI-03.3 — StorageModule: clientes S3 interno e público
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 18 passing (`storage.service.integration-spec.ts` 10, `storage.service.spec.ts` 7, `storage.module.spec.ts` 1). Regressão: 180 unit/integration + 52 e2e passando; lint e `tsc --noEmit` limpos.
+- **Observations:**
+  - **Item "a verificar" da TD-02 (CORS) resolvido:** o `cgr.dev/chainguard/minio` responde `NotImplemented` (HTTP 501) ao `PutBucketCors`, como previsto. O boot registra `Logger.warn` citando `MINIO_API_CORS_ALLOW_ORIGIN` e segue.
+  - Distinção "storage não responde" no `HeadBucket`, verificada no SDK instalado: erros de conexão (`ECONNREFUSED` / `ENOTFOUND`) trazem `$metadata` sem `httpStatusCode`. Além deles, `503` também é tratado como "ainda iniciando" e entra no retry; `404`/`NotFound` → `CreateBucket`; qualquer outro status derruba o boot sem retry. Janela de 30s com intervalo fixo de 1s (`STORAGE_BOOT` em `storage.constants.ts`).
+  - Os testes de integração usam o bucket fixo `streamtube-test` (sobrescrevem `S3_BUCKET` antes de carregar o namespace), para não poluir o bucket de dev (TD-13). O AC "boot com o `minio` ainda iniciando espera o storage" é coberto pelo unit (retry com fake timers), não por parar o container real.
+  - O `StorageModule` ainda não é importado pelo `AppModule`; entra via `VideosModule` no SI-03.5 e via `WorkerModule` no SI-03.10, conforme o plano. O AC "após o boot da aplicação o bucket existe e rejeita GET anônimo (403)" foi verificado com `moduleRef.init()` do `StorageModule`.
+  - Arquivos auxiliares além dos listados no plano: `storage.constants.ts` (tokens DI, prazos de URL, janela de boot, nomes de erro de partes), `storage.errors.ts` (`StorageInvalidPartsError`) e `storage.types.ts`.
+  - `listParts` pagina por `NextPartNumberMarker` (o `ListParts` devolve no máximo 1000 partes por chamada, e um upload pode ter até 10.000).
 
 ### SI-03.4 — Entidade Video + migration + gerador de public_id
 - **Status:** pending
