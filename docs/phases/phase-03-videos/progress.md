@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 4/14 completed
+**SIs:** 5/14 completed
 
 ### SI-03.1 — Infra: Redis, MinIO, FFmpeg e bibliotecas da fase
 - **Status:** completed
@@ -42,9 +42,16 @@
   - Com o `DELETE FROM "videos"` no `cleanAllTables`, todo suite que o chama depende de a tabela `videos` existir no banco (mesma premissa já valendo para `refresh_tokens`/`verification_tokens`).
 
 ### SI-03.5 — Endpoint POST /videos (início do upload + pré-cadastro em rascunho)
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 28 passing (`videos.service.spec.ts` 15, `videos.service.integration-spec.ts` 1, `channels.service.integration-spec.ts` 5 — 3 existentes + 2 de `findByUserId`, `videos.module.spec.ts` 1, `test/videos-initiate-upload.e2e-spec.ts` 6 — os 6 cenários da spec). Regressão: 209 unit/integration + 58 e2e passando; `tsc --noEmit` limpo; `npm run lint` com 0 erros (23 warnings, todos pré-existentes em `src/auth/auth.service*.spec.ts`).
+- **Observations:**
+  - Sessão retomada após queda de conexão: os arquivos já estavam no disco sem commit; revisados contra as 5 ações do plano e os 6 cenários de `specs/videos-initiate-upload.plan.md`, nada faltava, e nada foi recriado.
+  - **Compensação além do plano:** se a gravação do rascunho falhar depois do `CreateMultipartUpload`, o serviço faz `abortMultipartUpload` e relança o erro, para não deixar multipart órfão sem linha no banco.
+  - Usuário autenticado sem canal lança `Error` genérico (500): é uma invariante da Fase 02 (todo cadastro cria canal) e não há código para isso no Error Catalog.
+  - Colisão de `public_id`: até 5 tentativas (`PUBLIC_ID_MAX_ATTEMPTS`), detectando `23505` cujo `detail` cita `public_id`. A checagem duplica o padrão de `isPgUniqueViolationOnColumn` do `channels.service.ts`; extraí-la para `src/common` fica como follow-up (fora do escopo).
+  - Arquivos além dos listados no plano: `videos.constants.ts` (limites, allowlist, chave de storage), `dto/initiate-upload-response.dto.ts` (schema OpenAPI do 201) e `src/test/test-bucket.ts` (`TEST_S3_BUCKET` + `useTestBucket()`), usado pelos specs novos. O `storage.service.integration-spec.ts` (SI-03.3) ainda declara sua própria constante `'streamtube-test'`; passar a usar o helper fica como follow-up.
+  - Os e2e que sobem o `AppModule` sem `useTestBucket()` (auth, app, swagger) agora executam o `ensureBucket()` no bucket de dev (`streamtube`): só o garantem/criam, sem gravar objetos.
+  - O `openapi.json` commitado não foi regenerado: o plano faz isso no SI-03.13.
 
 ### SI-03.6 — Endpoints de partes do upload (gerar URLs + listar para retomar)
 - **Status:** pending
