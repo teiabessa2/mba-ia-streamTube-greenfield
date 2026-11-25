@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 8/14 completed
+**SIs:** 9/14 completed
 
 ### SI-03.1 — Infra: Redis, MinIO, FFmpeg e bibliotecas da fase
 - **Status:** completed
@@ -110,9 +110,32 @@
   - **`abort-repetido-recebe-404`.** O `404` do abort repetido vem do `findOwnedDraft`, porque a linha já foi removida. O storage nem chega a ser chamado.
 
 ### SI-03.9 — MediaModule: wrapper fino de ffprobe/ffmpeg
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 7 passing:
+  - `media.service.integration-spec.ts`: 6 testes, com FFmpeg real e arquivos servidos por URL pré-assinada interna do MinIO no bucket `streamtube-test`.
+    - MP4 3s 320x240 com áudio.
+    - Vídeo sem áudio.
+    - Texto renomeado `.mp4` → `InvalidMediaError`.
+    - Objeto inexistente (403) → erro transitório.
+    - Timeout do `ffprobe`.
+    - `extractFrame` gera JPEG com assinatura `FF D8`.
+  - `media.module.spec.ts`: 1 teste de compilação.
+
+  Regressão: 247 unit/integration (35 suítes) e 76 e2e (7 suítes) passando. `tsc --noEmit` limpo. `npm run lint` com 0 erros e os 23 warnings pré-existentes.
+- **Observations:**
+  - **Classificação dos erros do `ffprobe`, verificada no container (ffmpeg 5.1.9).**
+    - Arquivo inválido e falha de rede saem ambos com código 1. Então a distinção é feita pelo stderr.
+    - `Invalid data found when processing input` ou `moov atom not found` → `InvalidMediaError`.
+    - Qualquer outra saída ≠ 0 → `Error` comum (transitório). Exemplos: `403 Forbidden`, DNS, `Connection refused`.
+    - Processo morto por timeout (`killed`/`signal`) → `Error` comum.
+    - Os padrões ficam em `INVALID_MEDIA_STDERR_PATTERNS`, em `media.constants.ts`.
+  - **Regras além do plano.**
+    - Saída sem duração ou tamanho legíveis também vira `InvalidMediaError`. É o caso de uma imagem JPEG, que tem stream `video` sem duração.
+    - Sem `bit_rate` no container, o bitrate é calculado como `size × 8 / duration`.
+    - `extractFrame` falha com erro comum se o ffmpeg sair 0 com arquivo vazio, o que acontece quando o seek passa do fim.
+  - **Timeouts injetáveis.** Os limites vêm do token `MEDIA_OPTIONS`, com padrão de 30s no probe e 60s no frame. Não há variável de env nova, porque o plano não pede. O teste de timeout sobrescreve o token para 500ms e aponta para um servidor HTTP local que aceita a conexão e nunca responde.
+  - **Tipos próprios.** `MediaMetadata` e `ProbeResult` ficam em `media.types.ts`, para o módulo de mídia não depender de `videos`. A forma é idêntica à `VideoMetadata` de `videos.types.ts`, então são estruturalmente compatíveis no worker (SI-03.10).
+  - **Arquivos além dos listados no plano:** `media.constants.ts`, `media.errors.ts` e `media.types.ts`.
 
 ### SI-03.10 — Video Worker: processor, WorkerModule e entrypoint próprio
 - **Status:** pending
