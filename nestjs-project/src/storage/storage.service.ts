@@ -30,7 +30,10 @@ import {
   STORAGE_BOOT,
   STORAGE_DEFAULTS,
 } from './storage.constants';
-import { StorageInvalidPartsError } from './storage.errors';
+import {
+  StorageInvalidPartsError,
+  StorageUploadNotFoundError,
+} from './storage.errors';
 import type {
   CompletedPart,
   PresignGetOptions,
@@ -216,14 +219,23 @@ export class StorageService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /** Discards the uploaded parts; `NoSuchUpload` → `StorageUploadNotFoundError`. */
   async abortMultipartUpload(key: string, uploadId: string): Promise<void> {
-    await this.internalClient.send(
-      new AbortMultipartUploadCommand({
-        Bucket: this.config.bucket,
-        Key: key,
-        UploadId: uploadId,
-      }),
-    );
+    try {
+      await this.internalClient.send(
+        new AbortMultipartUploadCommand({
+          Bucket: this.config.bucket,
+          Key: key,
+          UploadId: uploadId,
+        }),
+      );
+    } catch (err) {
+      const { name, message } = asS3Error(err);
+      if (name === 'NoSuchUpload') {
+        throw new StorageUploadNotFoundError(message ?? name);
+      }
+      throw err;
+    }
   }
 
   async headObjectSize(key: string): Promise<number> {

@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 7/14 completed
+**SIs:** 8/14 completed
 
 ### SI-03.1 — Infra: Redis, MinIO, FFmpeg e bibliotecas da fase
 - **Status:** completed
@@ -84,13 +84,30 @@
   - `@ArrayUnique` recebe um identificador por `part_number`, com optional chaining para itens que não são objetos, e assim um `part_number` repetido vira `VALIDATION_ERROR`.
   - As duas suítes `describe` já existentes em `videos.service.spec.ts` passaram a prover um mock de `VideoProcessingQueue`, nova dependência do `VideosService`.
   - Agora o `AppModule` carrega o `QueueModule` pelo `VideosModule`. Por isso todas as suítes e2e abrem uma conexão Redis com o prefixo padrão, sem publicar jobs. A fila é fechada no `app.close()` pelo `onApplicationShutdown` do `@nestjs/bullmq`, e nenhum aviso de handle aberto apareceu.
-  - Ponto não coberto pelo plano: se o `enqueue` falhar depois do `UPDATE` para `processing`, o vídeo fica em `processing` sem job. Fica registrado para o SI-03.10 ou SI-03.11, ou para uma task futura de reconciliação.
-  - No run das suítes do SI, `videos.service.integration-spec.ts` e `videos.module.spec.ts` imprimiram o aviso do `pg` "Calling client.query() when the client is already executing a query is deprecated". Não bloqueia agora, mas vai quebrar no pg@9. Não verifiquei se o aviso já existia antes deste SI; fica como follow-up.
+  - **Limitação conhecida (task futura de reconciliação):** se o `enqueue` falhar depois do `UPDATE` para `processing`, o vídeo fica em `processing` sem job. Nenhum SI da Fase 03 exige tratar isso; fica para uma task futura que reconcilie vídeos em `processing` sem job na fila.
+  - O aviso do `pg` "Calling client.query() when the client is already executing a query is deprecated" aparece em `videos.service.integration-spec.ts` e `videos.module.spec.ts`. É pré-existente: já aparecia na baseline, antes da Fase 03, na primeira execução de `npm test -- --runInBand`. Fora do escopo desta fase.
 
 ### SI-03.8 — Endpoint DELETE /videos/:id/upload (abort do rascunho)
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 65 passing nas suítes do SI:
+  - Unit/integration, 61 em 4 suítes:
+    - `videos.service.spec.ts`: 4 unit novos de `abortUpload`.
+    - `videos.service.integration-spec.ts`: 1 novo de `abortUpload`, com PUT real de 1 parte.
+    - `storage.service.spec.ts`: 3 unit novos de `abortMultipartUpload`.
+    - `storage.service.integration-spec.ts`: 1 novo (abort repetido).
+  - E2E: `test/videos-upload-abort.e2e-spec.ts`, 4 testes (os 4 cenários da spec).
+
+  Regressão: 240 unit/integration (33 suítes) e 76 e2e (7 suítes) passando. `tsc --noEmit` limpo. `npm run lint` com 0 erros e os 23 warnings pré-existentes.
+- **Observations:**
+  - **Divergência MinIO × AWS no abort repetido.**
+    - O MinIO responde `204` a um `AbortMultipartUpload` de um `upload_id` que já não existe. A AWS S3 responde `NoSuchUpload`.
+    - A tolerância pedida na ação 2 está implementada:
+      - `StorageService.abortMultipartUpload` traduz `NoSuchUpload` para o novo `StorageUploadNotFoundError`, em `storage.errors.ts`, no mesmo padrão de `StorageInvalidPartsError`.
+      - `VideosService.abortUpload` ignora só esse erro e remove a linha mesmo assim.
+    - Como o MinIO não reproduz o `NoSuchUpload`, essa tradução é coberta por unit com mock do cliente S3.
+    - O integration do storage documenta o comportamento real do MinIO: o abort repetido resolve sem erro.
+  - **Delete condicional.** A linha é removida com `delete({ id, status: 'draft' })`, para nunca apagar um vídeo que saiu de `draft` entre a leitura e o delete.
+  - **`abort-repetido-recebe-404`.** O `404` do abort repetido vem do `findOwnedDraft`, porque a linha já foi removida. O storage nem chega a ser chamado.
 
 ### SI-03.9 — MediaModule: wrapper fino de ffprobe/ffmpeg
 - **Status:** pending

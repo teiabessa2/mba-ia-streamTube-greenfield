@@ -12,3 +12,14 @@ export class StorageInvalidPartsError extends Error {
     this.name = 'StorageInvalidPartsError';
   }
 }
+
+/**
+ * The multipart upload no longer exists in the storage (`NoSuchUpload`):
+ * already aborted, completed or expired.
+ */
+export class StorageUploadNotFoundError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'StorageUploadNotFoundError';
+  }
+}

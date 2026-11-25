@@ -195,4 +195,34 @@ describe('VideosService (integration: Postgres + MinIO + Redis)', () => {
       expect(job?.data).toEqual({ videoId: draft.id });
     });
   });
+
+  describe('abortUpload', () => {
+    it('should delete the draft and discard the part already sent, so listParts fails with NoSuchUpload', async () => {
+      const draft = await videosService.initiateUpload(channel.user_id, {
+        file_name: 'clip.mp4',
+        content_type: 'video/mp4',
+        size_bytes: 67108865, // part_count = 2
+      });
+      const { storage_key: key, upload_id: uploadId } = await dataSource
+        .getRepository(Video)
+        .findOneByOrFail({ id: draft.id });
+      const {
+        parts: [part1],
+      } = await videosService.presignParts(channel.user_id, draft.id, [1]);
+      const put = await requestPresigned(part1.url, {
+        method: 'PUT',
+        body: Buffer.from('first-part-bytes'),
+      });
+      expect(put.statusCode).toBe(200);
+
+      await videosService.abortUpload(channel.user_id, draft.id);
+
+      await expect(
+        dataSource.getRepository(Video).findOneBy({ id: draft.id }),
+      ).resolves.toBeNull();
+      await expect(
+        storageService.listParts(key, uploadId!),
+      ).rejects.toMatchObject({ name: 'NoSuchUpload' });
+    });
+  });
 });

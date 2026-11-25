@@ -1,4 +1,5 @@
 import {
+  AbortMultipartUploadCommand,
   CreateBucketCommand,
   HeadBucketCommand,
   PutBucketCorsCommand,
@@ -11,6 +12,7 @@ import {
   S3_PUBLIC_CLIENT,
   STORAGE_BOOT,
 } from './storage.constants';
+import { StorageUploadNotFoundError } from './storage.errors';
 import { StorageService } from './storage.service';
 
 const s3Error = (name: string, httpStatusCode?: number) =>
@@ -153,5 +155,54 @@ describe('StorageService.ensureBucket', () => {
     expect(warnSpy).not.toHaveBeenCalledWith(
       expect.stringContaining('MINIO_API_CORS_ALLOW_ORIGIN'),
     );
+  });
+});
+
+describe('StorageService.abortMultipartUpload', () => {
+  let service: StorageService;
+  let send: jest.Mock;
+
+  beforeEach(async () => {
+    send = jest.fn();
+    const moduleRef = await Test.createTestingModule({
+      providers: [
+        StorageService,
+        { provide: S3_INTERNAL_CLIENT, useValue: { send } },
+        { provide: S3_PUBLIC_CLIENT, useValue: { send: jest.fn() } },
+        { provide: storageConfig.KEY, useValue: { bucket: 'bucket' } },
+      ],
+    }).compile();
+    service = moduleRef.get(StorageService);
+  });
+
+  it('should send AbortMultipartUpload for the key and upload id', async () => {
+    send.mockResolvedValueOnce({});
+
+    await service.abortMultipartUpload('videos/v/original', 'upload-id');
+
+    const [[command]] = send.mock.calls as [AbortMultipartUploadCommand][];
+    expect(command).toBeInstanceOf(AbortMultipartUploadCommand);
+    expect(command.input).toEqual({
+      Bucket: 'bucket',
+      Key: 'videos/v/original',
+      UploadId: 'upload-id',
+    });
+  });
+
+  it('should map NoSuchUpload (AWS S3 for an unknown upload) to StorageUploadNotFoundError', async () => {
+    send.mockRejectedValueOnce(s3Error('NoSuchUpload', 404));
+
+    await expect(
+      service.abortMultipartUpload('videos/v/original', 'upload-id'),
+    ).rejects.toBeInstanceOf(StorageUploadNotFoundError);
+  });
+
+  it('should propagate other errors unchanged', async () => {
+    const denied = s3Error('AccessDenied', 403);
+    send.mockRejectedValueOnce(denied);
+
+    await expect(
+      service.abortMultipartUpload('videos/v/original', 'upload-id'),
+    ).rejects.toBe(denied);
   });
 });

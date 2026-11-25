@@ -134,6 +134,17 @@ describe('StorageService (MinIO)', () => {
         name: 'NoSuchUpload',
       });
     });
+
+    it('should resolve a repeated abort: MinIO answers 204 for an upload that no longer exists', async () => {
+      // AWS S3 answers NoSuchUpload here instead; that mapping is unit-tested.
+      const key = newKey();
+      const uploadId = await storage.createMultipartUpload(key, 'video/mp4');
+      await storage.abortMultipartUpload(key, uploadId);
+
+      await expect(
+        storage.abortMultipartUpload(key, uploadId),
+      ).resolves.toBeUndefined();
+    });
   });
 
   describe('putObject / deleteObject', () => {

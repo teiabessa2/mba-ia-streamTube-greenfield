@@ -4,7 +4,10 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { QueryFailedError, Repository } from 'typeorm';
 import { ChannelsService } from '../channels/channels.service';
-import { StorageInvalidPartsError } from '../storage/storage.errors';
+import {
+  StorageInvalidPartsError,
+  StorageUploadNotFoundError,
+} from '../storage/storage.errors';
 import { StorageService } from '../storage/storage.service';
 import type { CompleteUploadPartDto } from './dto/complete-upload.dto';
 import type { CompleteUploadResponseDto } from './dto/complete-upload-response.dto';
@@ -244,6 +247,29 @@ export class VideosService {
       public_id: video.public_id,
       status: VideoStatus.PROCESSING,
     };
+  }
+
+  /**
+   * Gives up a draft: discards the uploaded parts and deletes the row. There is
+   * no "aborted" status (phase-03-videos/TD-12).
+   */
+  async abortUpload(userId: string, id: string): Promise<void> {
+    const video = await this.findOwnedDraft(userId, id);
+
+    try {
+      await this.storageService.abortMultipartUpload(
+        video.storage_key,
+        video.upload_id as string,
+      );
+    } catch (err) {
+      // Already gone in the storage (expired/aborted): the end state is the same.
+      if (!(err instanceof StorageUploadNotFoundError)) throw err;
+    }
+
+    await this.videoRepository.delete({
+      id: video.id,
+      status: VideoStatus.DRAFT,
+    });
   }
 
   private async saveDraftWithUniquePublicId(

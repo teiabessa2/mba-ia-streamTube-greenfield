@@ -2,7 +2,10 @@ import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { QueryFailedError } from 'typeorm';
 import { ChannelsService } from '../channels/channels.service';
-import { StorageInvalidPartsError } from '../storage/storage.errors';
+import {
+  StorageInvalidPartsError,
+  StorageUploadNotFoundError,
+} from '../storage/storage.errors';
 import { StorageService } from '../storage/storage.service';
 import type { InitiateUploadDto } from './dto/initiate-upload.dto';
 import { Video } from './entities/video.entity';
@@ -468,5 +471,88 @@ describe('VideosService.completeUpload', () => {
     ).rejects.toBeInstanceOf(VideoNotInDraftException);
     expect(storage.completeMultipartUpload).not.toHaveBeenCalled();
     expect(queue.enqueue).not.toHaveBeenCalled();
+  });
+});
+
+describe('VideosService.abortUpload', () => {
+  let service: VideosService;
+  let repo: { findOne: jest.Mock; delete: jest.Mock };
+  let storage: { abortMultipartUpload: jest.Mock };
+
+  beforeEach(async () => {
+    repo = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 'video-1',
+        channel_id: CHANNEL.id,
+        status: VideoStatus.DRAFT,
+        storage_key: 'videos/video-1/original',
+        upload_id: 'upload-id',
+      } as Video),
+      delete: jest.fn().mockResolvedValue({ affected: 1 }),
+    };
+    storage = { abortMultipartUpload: jest.fn().mockResolvedValue(undefined) };
+
+    const moduleRef = await Test.createTestingModule({
+      providers: [
+        VideosService,
+        { provide: getRepositoryToken(Video), useValue: repo },
+        { provide: StorageService, useValue: storage },
+        {
+          provide: ChannelsService,
+          useValue: { findByUserId: jest.fn().mockResolvedValue(CHANNEL) },
+        },
+        { provide: VideoProcessingQueue, useValue: { enqueue: jest.fn() } },
+      ],
+    }).compile();
+    service = moduleRef.get(VideosService);
+  });
+
+  it('should abort the multipart and delete the draft row', async () => {
+    await service.abortUpload(USER_ID, 'video-1');
+
+    expect(storage.abortMultipartUpload).toHaveBeenCalledWith(
+      'videos/video-1/original',
+      'upload-id',
+    );
+    expect(repo.delete).toHaveBeenCalledWith({
+      id: 'video-1',
+      status: VideoStatus.DRAFT,
+    });
+  });
+
+  it('should still delete the row when the storage answers NoSuchUpload', async () => {
+    storage.abortMultipartUpload.mockRejectedValueOnce(
+      new StorageUploadNotFoundError('The specified upload does not exist'),
+    );
+
+    await expect(
+      service.abortUpload(USER_ID, 'video-1'),
+    ).resolves.toBeUndefined();
+    expect(repo.delete).toHaveBeenCalledWith({
+      id: 'video-1',
+      status: VideoStatus.DRAFT,
+    });
+  });
+
+  it('should propagate other storage errors and keep the row', async () => {
+    const outage = new Error('connect ECONNREFUSED');
+    storage.abortMultipartUpload.mockRejectedValueOnce(outage);
+
+    await expect(service.abortUpload(USER_ID, 'video-1')).rejects.toBe(outage);
+    expect(repo.delete).not.toHaveBeenCalled();
+  });
+
+  it('should throw VideoNotInDraftException for a video in processing without calling the storage', async () => {
+    repo.findOne.mockResolvedValueOnce({
+      id: 'video-1',
+      status: VideoStatus.PROCESSING,
+      upload_id: null,
+    } as Video);
+
+    await expect(
+      service.abortUpload(USER_ID, 'video-1'),
+    ).rejects.toBeInstanceOf(VideoNotInDraftException);
+    expect(storage.abortMultipartUpload).not.toHaveBeenCalled();
+    expect(repo.delete).not.toHaveBeenCalled();
   });
 });
