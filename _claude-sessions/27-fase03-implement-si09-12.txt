@@ -1,0 +1,2599 @@
+ ▐▛███▛█   Claude Code v2.1.331
+▝▜██████▀  Opus 5.5 · Claude Pro
+ ▝▝   ▝▝   ~/mbaengsoft/mba-ia-streamTube-greenfield
+
+
+❯ Retomando a implementação da Fase 03 depois de uma pausa. Leia                
+  docs/phases/phase-03-videos/progress.md: os SIs 03.1 a 03.8 estão concluídos. 
+  Regras: npm test -- --runInBand e npm run test:e2e -- --runInBand dentro do   
+  container nestjs-api, com start:dev parado; um commit por SI na               
+  feature/phase-03-videos (confira a branch antes), nunca em main/dev; ao fim   
+  de cada SI, pare, mostre os testes e aguarde meu ok; o push é feito por mim;  
+  nunca rode docker compose down -v, git reset, checkout de outra branch, rm    
+  -rf nem altere arquivos fora do escopo do SI sem perguntar; consulte o        
+  context7 antes de usar libs. Responda em português. Comece confirmando o      
+  próximo SI.                                                                   
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Branch conferida: estou na feature/phase-03-videos, com a árvore de trabalho
+  limpa. O progress.md mostra 8 de 14 SIs concluídos.
+
+  Próximo SI: SI-03.9, MediaModule (wrapper fino de ffprobe/ffmpeg)
+
+  É um módulo próprio, sem wrapper de terceiros, com duas funções sobre
+  execFile, que o worker do SI-03.10 vai usar.
+
+  Ações técnicas:
+  1. src/media/media.service.ts, probe(url): chama ffprobe -v error 
+     -print_format json -show_format -show_streams com timeout. Devolve
+     durationSeconds e { width, height, videoCodec, audioCodec?, bitrate, 
+     formatName, sizeBytes }.
+  2. Distinção de erros para o retry do SI-03.11:
+     - Arquivo sem stream de vídeo, JSON ilegível ou saída ≠ 0 por arquivo
+       inválido lança InvalidMediaError.
+     - Timeout ou falha de rede lança um erro comum, tratado como transitório.
+  3. extractFrame(url, atSeconds, outputPath): chama ffmpeg -ss <t> -i <url> 
+     -frames:v 1 -q:v 2 -y <out>. Com o seek antes do -i, o ffmpeg lê só o
+     trecho necessário por HTTP range, sem baixar o arquivo inteiro.
+  4. src/media/media.module.ts e helper src/test/media-fixtures.ts: o módulo
+     exporta o MediaService. O helper gera vídeos curtos com lavfi testsrc e
+     sine num diretório temporário, sem commitar nenhum binário.
+
+  Testes previstos:
+  - media.service.integration-spec.ts: roda com o FFmpeg real e lê os arquivos
+    por URL pré-assinada do MinIO. Cobre:
+    - um MP4 de 3s, 320x240, h264;
+    - um texto renomeado para .mp4, que deve lançar InvalidMediaError;
+    - um vídeo sem áudio, que deve voltar sem audioCodec;
+    - o extractFrame, que deve gerar um JPEG começando por FF D8;
+    - um timeout, que deve lançar um erro que não é InvalidMediaError.
+  - media.module.spec.ts: teste de compilação do módulo.
+
+  Antes de escrever código vou:
+  - consultar no context7 a API de child_process.execFile (timeout,
+    killed/signal, code) e do ffprobe/ffmpeg;
+  - ativar as skills nestjs-best-practices e testing-guide-nestjs-project;
+  - confirmar que o start:dev está parado antes de rodar os testes no container
+    nestjs-api.
+
+  Posso começar o SI-03.9?
+
+✻ Worked for 19s · done 8:34 PM
+
+※ recap: Estamos retomando a Fase 03 de vídeos; os SIs 03.1 a 03.8 estão concluídos e o próximo é o SI-03.9, o MediaModule com `probe` e `extractFrame` sobre ffprobe/ffmpeg. Só falta o seu ok para eu começar. (turn off recaps in /config)
+
+❯ /implement 3                                                                  
+
+  Ran 4 shell commands (ctrl+o to expand)
+
+● Skill(testing-guide-nestjs-project)
+  ⎿  Loaded skill
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Lendo o StorageService (putObject/presignInternalGet) para usar no teste de
+  integração do MediaService.
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+● start:dev parado. Consultando o context7 sobre child_process.execFile (Node
+  24) antes de escrever o código.
+
+  Called context7 2 times (ctrl+o to expand)
+
+● O execFile promisificado rejeita com código de saída, flags de timeout e
+  stdout/stderr anexados. Vou verificar no container como o ffprobe distingue
+  arquivo inválido de falha de rede, para classificar os erros. · summary
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Classificação de erros de mídia definida: saída diferente de zero com "Invalid
+  data found" ou "moov atom not found" vira InvalidMediaError, enquanto 403,
+  DNS e conexão recusada ficam como transitórios. Agora vou ativar a skill
+  nestjs-best-practices antes de escrever o módulo. · summary
+
+● Skill(nestjs-best-practices)
+  ⎿  Loaded skill
+
+● Escrevendo os arquivos do MediaModule.
+
+● Write(nestjs-project/src/media/media.constants.ts)
+  ⎿  Wrote 21 lines to nestjs-project/src/media/media.constants.ts
+       1 /** DI token for the ffprobe/ffmpeg time limits (`MediaOptions`)
+         . */
+       2 export const MEDIA_OPTIONS = 'MEDIA_OPTIONS';
+       3 
+       4 export const MEDIA_DEFAULTS = {
+       5   /** ffprobe only reads headers through HTTP range requests (TD
+         -06). */
+       6   PROBE_TIMEOUT_MS: 30_000,
+       7   /** One frame after an input seek, also through HTTP range req
+         uests (TD-06). */
+     … +14 lines (ctrl+o to expand)
+
+● Write(nestjs-project/src/media/media.errors.ts)
+  ⎿  Wrote 11 lines to nestjs-project/src/media/media.errors.ts
+       1 /**
+       2  * The file is not a readable video (no video stream, unreadable
+          container or
+       3  * ffprobe output). Permanent: retrying cannot fix it, so the wo
+         rker turns it
+       4  * into an `UnrecoverableError` (phase-03-videos/TD-10, TD-11).
+       5  */
+       6 export class InvalidMediaError extends Error {
+       7   constructor(message: string) {
+       8     super(message);
+     … +3 lines (ctrl+o to expand)
+
+● Write(nestjs-project/src/media/media.types.ts)
+  ⎿  Wrote 21 lines to nestjs-project/src/media/media.types.ts
+       1 /** Time limits for the ffprobe/ffmpeg child processes. */
+       2 export interface MediaOptions {
+       3   probeTimeoutMs: number;
+       4   frameTimeoutMs: number;
+       5 }
+       6 
+       7 /** Technical metadata extracted by `ffprobe` (phase-03-videos/T
+         D-05). */
+       8 export interface MediaMetadata {
+       9   width: number;
+     … +12 lines (ctrl+o to expand)
+  ⎿  Loaded CLAUDE.md
+  ⎿  Loaded ../.claude/rules/typescript-strict.md
+  ⎿  Loaded ../.claude/rules/nestjs-common-conventions.md
+
+● Write(nestjs-project/src/media/media.service.ts)
+  ⎿  Wrote 173 lines to nestjs-project/src/media/media.service.ts
+       1 import { execFile } from 'node:child_process';
+       2 import { stat } from 'node:fs/promises';
+       3 import { promisify } from 'node:util';
+       4 import { Inject, Injectable } from '@nestjs/common';
+       5 import {
+       6   INVALID_MEDIA_STDERR_PATTERNS,
+       7   MEDIA_DEFAULTS,
+       8   MEDIA_OPTIONS,
+       9 } from './media.constants';
+      10 import { InvalidMediaError } from './media.errors';
+     … +163 lines (ctrl+o to expand)
+
+● Write(nestjs-project/src/media/media.module.ts)
+  ⎿  Wrote 19 lines to nestjs-project/src/media/media.module.ts
+       1 import { Module } from '@nestjs/common';
+       2 import { MEDIA_DEFAULTS, MEDIA_OPTIONS } from './media.constants
+         ';
+       3 import { MediaService } from './media.service';
+       4 import type { MediaOptions } from './media.types';
+       5 
+       6 @Module({
+       7   providers: [
+       8     {
+       9       provide: MEDIA_OPTIONS,
+     … +10 lines (ctrl+o to expand)
+  ⎿  Loaded ../.claude/rules/typeorm-queries.md
+  ⎿  Loaded ../.claude/rules/nestjs-services.md
+  ⎿  Loaded ../.claude/rules/nestjs-modules.md
+
+● Agora o helper de fixtures e os testes.
+
+● Write(nestjs-project/src/test/media-fixtures.ts)  ⎿  Wrote 66 lines to nestjs-project/src/test/media-fixtures.ts
+       1 import { execFile } from 'node:child_process';
+       2 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+       3 import { tmpdir } from 'node:os';
+       4 import { join } from 'node:path';
+       5 import { promisify } from 'node:util';
+       6 
+       7 const execFileAsync = promisify(execFile);
+       8 
+       9 export interface VideoFixtureOptions {
+      10   durationSeconds?: number;
+     … +56 lines (ctrl+o to expand)
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Write(nestjs-project/src/media/media.service.integration-spec.ts)
+  ⎿  Wrote 155 lines to
+     nestjs-project/src/media/media.service.integration-spec.ts
+       1 import { randomUUID } from 'node:crypto';
+       2 import { readFile } from 'node:fs/promises';
+       3 import { createServer, type Server } from 'node:http';
+       4 import type { AddressInfo } from 'node:net';
+       5 import { ConfigModule } from '@nestjs/config';
+       6 import { Test, type TestingModule } from '@nestjs/testing';
+       7 import storageConfig from '../config/storage.config';
+       8 import { StorageModule } from '../storage/storage.module';
+       9 import { StorageService } from '../storage/storage.service';
+      10 import { MediaFixtures } from '../test/media-fixtures';
+     … +145 lines (ctrl+o to expand)
+
+● Write(nestjs-project/src/media/media.module.spec.ts)
+  ⎿  Wrote 19 lines to nestjs-project/src/media/media.module.spec.ts
+       1 import { Test } from '@nestjs/testing';
+       2 import { MEDIA_DEFAULTS, MEDIA_OPTIONS } from './media.constants
+         ';
+       3 import { MediaModule } from './media.module';
+       4 import { MediaService } from './media.service';
+       5 
+       6 describe('MediaModule', () => {
+       7   it('should compile and provide MediaService with the default t
+         ime limits', async () => {
+       8     const moduleRef = await Test.createTestingModule({
+     … +11 lines (ctrl+o to expand)
+  ⎿  Loaded ../.claude/rules/nestjs-testing.md
+
+● Rodando os testes do SI direto no container. São só dois arquivos, então a
+  saída é pequena e dispensa subagente.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● 7 testes passando na primeira execução. Agora tsc, lint e a regressão completa
+  (unit/integration + e2e).
+
+● Bash(docker compose exec -T nestjs-api npx tsc --noEmit; echo "tsc=$?"; docker
+      compose exec -T nestjs-api npm run lint 2>&1 | tail -5; git status
+      --short)
+  ⎿  tsc=0
+       69:9  error  Unsafe assignment of an `any` value  @typescript-eslint
+     /no-unsafe-assignment
+     … +7 lines (ctrl+o to expand)
+  ⎿  Updated nestjs-project/src/media/media.service.integration-spec.ts +3
+     -1
+      122 
+      123      afterAll(async () => {
+      124        hangingServer.closeAllConnections();
+      125 -      await new Promise<void>((resolve) => hangingServer.close
+          -(() => resolve()));                                           
+      125 +      await new Promise<void>((resolve) =>                    
+      126 +        hangingServer.close(() => resolve()),                 
+      127 +      );                                                      
+      128        await timeoutModule.close();
+      129      });
+      130 
+  ⎿  Updated nestjs-project/src/media/media.service.ts +1 -3
+      44   */
+      45  @Injectable()
+      46  export class MediaService {
+      47 -  constructor(                                                 
+      48 -    @Inject(MEDIA_OPTIONS) private readonly options: MediaOptio
+         -ns,                                                            
+      49 -  ) {}                                                         
+      47 +  constructor(@Inject(MEDIA_OPTIONS) private readonly options: 
+         +MediaOptions) {}                                               
+      48 
+      49    /**
+      50     * Reads duration and technical metadata. Throws `InvalidMedi
+          aError` when the
+  ⎿  Updated nestjs-project/src/test/media-fixtures.ts +6 -1
+      38      const video = `testsrc=duration=${durationSeconds}:size=${w
+          idth}x${height}:rate=25`;
+      39      const args = ['-v', 'error', '-f', 'lavfi', '-i', video];
+      40      if (withAudio) {
+      41 -      args.push('-f', 'lavfi', '-i', `sine=frequency=1000:durat
+         -ion=${durationSeconds}`);                                      
+      41 +      args.push(                                               
+      42 +        '-f',                                                  
+      43 +        'lavfi',                                               
+      44 +        '-i',                                                  
+      45 +        `sine=frequency=1000:duration=${durationSeconds}`,     
+      46 +      );                                                       
+      47      }
+      48      args.push('-c:v', 'libx264', '-pix_fmt', 'yuv420p');
+      49      if (withAudio) args.push('-c:a', 'aac', '-shortest');
+  ⎿  (timeout 5m)
+
+● O lint (--fix) só aplicou Prettier nos meus arquivos novos. Sobraram 3 erros,
+  que vou localizar.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Troco os matchers assimétricos (expect.any) por asserções diretas, sem relaxar
+  o que é verificado:
+
+● Update(nestjs-project/src/media/media.service.integration-spec.ts)
+  ⎿  Added 5 lines, removed 5 lines
+      60 
+      61        expect(result.durationSeconds).toBeGreaterThanOrEqual(2.9
+          );
+      62        expect(result.durationSeconds).toBeLessThanOrEqual(3.1);
+      63 -      expect(result.metadata).toEqual({                        
+      63 +      const { bitrate, formatName, sizeBytes, ...stream } = res
+         +ult.metadata;                                                  
+      64 +      expect(stream).toEqual({                                 
+      65          width: 320,
+      66          height: 240,
+      67          videoCodec: 'h264',
+      68          audioCodec: 'aac',
+      68 -        bitrate: expect.any(Number),                           
+      69 -        formatName: expect.stringContaining('mp4'),            
+      70 -        sizeBytes: expect.any(Number),                         
+      69        });
+      72 -      expect(result.metadata.bitrate).toBeGreaterThan(0);      
+      70 +      expect(formatName).toContain('mp4');                     
+      71 +      expect(bitrate).toBeGreaterThan(0);                      
+      72 +      expect(sizeBytes).toBeGreaterThan(0);                    
+      73        expect(result.metadata.sizeBytes).toBeGreaterThan(0);
+      74      }, 30_000);
+      75 
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Update(nestjs-project/src/media/media.service.integration-spec.ts)
+  ⎿  Removed 1 line
+      70        expect(formatName).toContain('mp4');
+      71        expect(bitrate).toBeGreaterThan(0);
+      72        expect(sizeBytes).toBeGreaterThan(0);
+      73 -      expect(result.metadata.sizeBytes).toBeGreaterThan(0);    
+      73      }, 30_000);
+      74 
+      75      it('should omit audioCodec for a video without an audio tra
+          ck', async () => {
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Tudo verde. Conferindo o lint do projeto inteiro e atualizando o progress.md.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Update(docs/phases/phase-03-videos/progress.md)
+  ⎿  Added 26 lines, removed 3 lines
+      110    - **`abort-repetido-recebe-404`.** O `404` do abort repetido
+            vem do `findOwnedDraft`, porque a linha já foi removida. O st
+           orage nem chega a ser chamado.
+      111 
+      112  ### SI-03.9 — MediaModule: wrapper fino de ffprobe/ffmpeg
+      113 -- **Status:** pending                                         
+      114 -- **Tests:** —                                                
+      115 -- **Observations:** none                                      
+      113 +- **Status:** completed                                       
+      114 +- **Tests:** 7 passing:                                       
+      115 +  - `media.service.integration-spec.ts`: 6 testes, com FFmpeg 
+          +real e arquivos servidos por URL pré-assinada interna do MinIO
+          + no bucket `streamtube-test`.                                 
+      116 +    - MP4 3s 320x240 com áudio.                               
+      117 +    - Vídeo sem áudio.                                        
+      118 +    - Texto renomeado `.mp4` → `InvalidMediaError`.           
+      119 +    - Objeto inexistente (403) → erro transitório.            
+      120 +    - Timeout do `ffprobe`.                                   
+      121 +    - `extractFrame` gera JPEG com assinatura `FF D8`.        
+      122 +  - `media.module.spec.ts`: 1 teste de compilação.            
+      123 
+      124 +  Regressão: 247 unit/integration (35 suítes) e 76 e2e (7 suít
+          +es) passando. `tsc --noEmit` limpo. `npm run lint` com 0 erros
+          + e os 23 warnings pré-existentes.                             
+      125 +- **Observations:**                                           
+      126 +  - **Classificação dos erros do `ffprobe`, verificada no cont
+          +ainer (ffmpeg 5.1.9).**                                       
+      127 +    - Arquivo inválido e falha de rede saem ambos com código 1
+          +. Então a distinção é feita pelo stderr.                      
+      128 +    - `Invalid data found when processing input` ou `moov atom
+          + not found` → `InvalidMediaError`.                            
+      129 +    - Qualquer outra saída ≠ 0 → `Error` comum (transitório). 
+          +Exemplos: `403 Forbidden`, DNS, `Connection refused`.         
+      130 +    - Processo morto por timeout (`killed`/`signal`) → `Error`
+          + comum.                                                       
+      131 +    - Os padrões ficam em `INVALID_MEDIA_STDERR_PATTERNS`, em 
+          +`media.constants.ts`.                                         
+      132 +  - **Regras além do plano.**                                 
+      133 +    - Saída sem duração ou tamanho legíveis também vira `Inval
+          +idMediaError`. É o caso de uma imagem JPEG, que tem stream `vi
+          +deo` sem duração.                                             
+      134 +    - Sem `bit_rate` no container, o bitrate é calculado como 
+          +`size × 8 / duration`.                                        
+      135 +    - `extractFrame` falha com erro comum se o ffmpeg sair 0 c
+          +om arquivo vazio, o que acontece quando o seek passa do fim.  
+      136 +  - **Timeouts injetáveis.** Os limites vêm do token `MEDIA_OP
+          +TIONS`, com padrão de 30s no probe e 60s no frame. Não há vari
+          +ável de env nova, porque o plano não pede. O teste de timeout 
+          +sobrescreve o token para 500ms e aponta para um servidor HTTP 
+          +local que aceita a conexão e nunca responde.                  
+      137 +  - **Tipos próprios.** `MediaMetadata` e `ProbeResult` ficam 
+          +em `media.types.ts`, para o módulo de mídia não depender de `v
+          +ideos`. A forma é idêntica à `VideoMetadata` de `videos.types.
+          +ts`, então são estruturalmente compatíveis no worker (SI-03.10
+          +).                                                            
+      138 +  - **Arquivos além dos listados no plano:** `media.constants.
+          +ts`, `media.errors.ts` e `media.types.ts`.                    
+      139 +                                                              
+      140  ### SI-03.10 — Video Worker: processor, WorkerModule e entrypo
+           int próprio
+      141  - **Status:** pending
+      142  - **Tests:** —
+
+● Bash(cd /home/teiabessa/mbaengsoft/mba-ia-streamTube-greenfield && sed -i
+      's/^\*\*SIs:\*\* 8\/14 completed/**SIs:** 9\/14 completed/'
+      docs/phases/phase-03-videos/pro…)
+  ⎿  4:**SIs:** 9/14 completed
+     feature/phase-03-videos
+  ⎿  Updated docs/phases/phase-03-videos/progress.md +1 -1
+      1  # phase-03-videos — Progress
+      2 
+      3  **Status:** in_progress
+      4 -**SIs:** 8/14 completed                                         
+      4 +**SIs:** 9/14 completed                                         
+      5 
+      6  ### SI-03.1 — Infra: Redis, MinIO, FFmpeg e bibliotecas da fase
+      7  - **Status:** completed
+
+● Commit do SI na feature/phase-03-videos:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● O SI-03.9 está pronto: os testes dele passam e a suíte inteira continua verde.
+  Ficou no commit 3d44cfe na feature/phase-03-videos, ainda sem push.
+
+  Testes do SI: 7 passando.
+  - media.service.integration-spec.ts (6 testes), rodando o FFmpeg de verdade
+    contra arquivos servidos pelo MinIO por URL pré-assinada:
+    - um MP4 de 3s com áudio devolve duração entre 2.9 e 3.1, 320x240, h264/aac,
+      bitrate, formatName e sizeBytes;
+    - um vídeo sem áudio devolve os metadados sem audioCodec;
+    - um arquivo de texto renomeado para .mp4 lança InvalidMediaError;
+    - um objeto inexistente (resposta 403) lança um erro comum, não
+      InvalidMediaError;
+    - um ffprobe que passa do timeout lança um erro comum, não
+      InvalidMediaError;
+    - o extractFrame grava um JPEG que começa com FF D8.
+  - media.module.spec.ts (1 teste): o módulo compila.
+
+  Verificação completa (no container nestjs-api, com start:dev parado):
+  - npm test -- --runInBand: 247 testes passando em 35 suítes.
+  - npm run test:e2e -- --runInBand: 76 testes passando em 7 suítes.
+  - npx tsc --noEmit: sem erros.
+  - npm run lint: 0 erros e os mesmos 23 warnings que já existiam em auth.
+
+  Decisões que tomei além do plano (registradas no progress.md):
+  - Erro definitivo × erro transitório: o ffprobe sai com código 1 tanto para
+    arquivo inválido quanto para falha de rede, então a separação é feita pelo
+    texto de erro. Invalid data found… e moov atom not found viram
+    InvalidMediaError, que o SI-03.11 vai tratar sem retry. Erro 403, DNS,
+    conexão recusada e timeout viram erro comum, que entra no retry.
+  - Arquivo sem duração ou tamanho (uma imagem JPEG, por exemplo) também vira
+    InvalidMediaError.
+  - Timeouts: 30s para o probe e 60s para o frame. São injetáveis pelo token
+    MEDIA_OPTIONS, sem variável de ambiente nova.
+  - Arquivos fora da lista do plano: criei media.constants.ts, media.errors.ts e
+    media.types.ts. O media.types.ts tem tipos próprios para o módulo de mídia
+    não depender de videos.
+
+  Dois avisos:
+  - O TaskCreate, que a skill /implement usa para a lista de SIs, não está
+    disponível nesta sessão. Estou acompanhando o andamento só pelo progress.md.
+  - Os specs de teste dos SIs 03.12 e 03.13 (videos-get-owned.plan.md e
+    videos-playback.plan.md) são cerca de 1h50 mais antigos que o plano. O
+    SI-03.9 não usa specs; quando chegarmos nesses dois, pergunto se você quer
+    rodar /plan-test-specs de novo antes.
+
+  Seguir para SI-03.10?
+
+✻ Crunched for 6m 3s · done 8:45 PM
+
+※ recap: Estamos implementando a Fase 03 (vídeos) SI por SI, e o SI-03.9 (MediaModule com ffprobe/ffmpeg) está pronto, com testes verdes e commit 3d44cfe. Falta só o seu ok para começar o SI-03.10, o Video Worker. (turn off recaps in /config)
+
+❯ git diff 30a33bd -- docs/phases/phase-03-videos/phase-03-videos.md | grep     
+  "^@@"                                                                         
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Desde o commit 30a33bd (docs: phase 03 test specs), o phase-03-videos.md mudou
+  em só dois trechos, e os dois ficam no SI-03.1:
+
+  @@ -28,7 +28,7 @@   → ação técnica 4 do SI-03.1
+  @@ -42,7 +42,7 @@   → critério de aceite de `npm ls` do SI-03.1
+
+  Os dois são a correção do ioredis, que foi registrada no progress.md do
+  SI-03.1. O ioredis saiu de "dependência transitiva do bullmq" para "instalado
+  explicitamente como ioredis@^5".
+
+  Portanto, o aviso de specs antigos que dei sobre os SIs 03.12 e 03.13 não
+  procede. O plano só parece mais novo que os specs por causa dessa edição no
+  SI-03.1, que não mexe nos testes de nenhum SI. Os specs
+  videos-get-owned.plan.md e videos-playback.plan.md continuam batendo com o
+  plano, e não é preciso rodar /plan-test-specs de novo.
+
+  Seguir para SI-03.10?
+
+✻ Baked for 13s · done 8:52 PM
+
+❯ /context 
+  ⎿  Context usage
+     ⛀ ⛁ ⛁ ⛁ ⛀ ⛀ ⛀ ⛀ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁   Opus 5.5
+     ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶   claude-opus-5-5
+     ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶   139.2k/1m tokens (14%)
+     ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ 
+     ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶   Estimated usage by category
+     ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶   ⛁ System prompt: 3k tokens (0.3%)
+     ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶   ⛁ System tools: 17.3k tokens (2%)
+     ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶   ⛁ MCP tools: 2k tokens (0.2%)
+     ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶   ⛁ MCP server instructions: 945 tokens (0.1%)
+     ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛝ ⛝ ⛝ ⛝ ⛝ ⛝ ⛝   ⛁ Custom agents: 1.1k tokens (0.1%)
+                                               ⛁ Memory files: 2k tokens (0.2%)
+                                               ⛁ Skills: 7.5k tokens (0.7%)
+                                               ⛁ Messages: 105.4k tokens (11%)
+                                               ⛶ Free space: 827.8k tokens (83%)
+                                               ⛝ Autocompact buffer: 33k tokens (3%)
+
+     Auto-compact window:  1m tokens
+
+     MCP tools · /mcp (loaded on-demand)
+     └ 13 tools · 2k tokens
+
+     Custom agents · .claude/agents/
+     └ 6 agents · 1.1k tokens
+
+     Memory files · /memory
+     └ 2 files · 2k tokens
+
+     Skills · /skills
+     └ 42 skills · 7.5k tokens
+
+     /context all to expand
+
+❯ ok, siga para o SI-03.10.                                                     
+
+  Ran 1 shell command (ctrl+o to expand)
+● Branch confere (feature/phase-03-videos, árvore limpa). Começando o SI-03.10:
+  leio primeiro o QueueModule, o AppModule, a entidade e o Compose.
+
+  Searched for 1 pattern, ran 2 shell commands (ctrl+o to expand)
+
+● Consultando o context7 sobre @nestjs/bullmq (processor/WorkerHost, v11) e
+  sobre createApplicationContext com enableShutdownHooks.
+
+  Called context7 3 times (ctrl+o to expand)
+
+● A doc confirmou o padrão do @Processor com WorkerHost, o UnrecoverableError e
+  o contexto sem HTTP. Agora vou ver o Dockerfile.dev, o PutObjectBody e o
+  padrão do unit spec do service. · summary
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Escrevendo o processor, a chave de thumbnail e as constantes do worker.
+
+● Update(nestjs-project/src/videos/videos.constants.ts)
+  ⎿  Added 1 line
+      26 
+      27  export const videoStorageKeys = {
+      28    original: (videoId: string) => `videos/${videoId}/original`,
+      29 +  thumbnail: (videoId: string) => `videos/${videoId}/thumbnail.
+         +jpg`,                                                          
+      30  } as const;
+      31 
+      32  /** `process-video` job on the `videos` queue (phase-03-videos/
+          TD-10). */
+
+● Write(nestjs-project/src/worker/worker.constants.ts)
+  ⎿  Wrote 7 lines to nestjs-project/src/worker/worker.constants.ts
+      1 export const THUMBNAIL = {
+      2   /** Frame taken at ~10% of the duration (sugestão — sem origem 
+        normativa). */
+      3   FRAME_POSITION_RATIO: 0.1,
+      4   CONTENT_TYPE: 'image/jpeg',
+      5   TEMP_DIR_PREFIX: 'video-thumbnail-',
+      6   TEMP_FILE_NAME: 'thumbnail.jpg',
+      7 } as const;
+
+● Write(nestjs-project/src/worker/video.processor.ts)
+  ⎿  Wrote 109 lines to nestjs-project/src/worker/video.processor.ts
+       1 import { mkdtemp, readFile, rm } from 'node:fs/promises';
+       2 import { tmpdir } from 'node:os';
+       3 import { join } from 'node:path';
+       4 import { Processor, WorkerHost } from '@nestjs/bullmq';
+       5 import { Logger } from '@nestjs/common';
+       6 import { InjectRepository } from '@nestjs/typeorm';
+       7 import { type Job, UnrecoverableError } from 'bullmq';
+       8 import type { Repository } from 'typeorm';
+       9 import { InvalidMediaError } from '../media/media.errors';
+      10 import { MediaService } from '../media/media.service';
+     … +99 lines (ctrl+o to expand)
+
+  Listed 1 directory (ctrl+o to expand)
+
+● O WorkerModule importa o UsersModule porque a relação Video → Channel → User
+  precisa dos metadados de Channel e User no DataSource. · summary
+
+● Write(nestjs-project/src/worker/worker.module.ts)
+  ⎿  Wrote 64 lines to nestjs-project/src/worker/worker.module.ts
+       1 import { Module } from '@nestjs/common';
+       2 import { ConfigModule, type ConfigType } from '@nestjs/config';
+       3 import { TypeOrmModule } from '@nestjs/typeorm';
+       4 import appConfig from '../config/app.config';
+       5 import authConfig from '../config/auth.config';
+       6 import databaseConfig from '../config/database.config';
+       7 import { envValidationSchema } from '../config/env.validation';
+       8 import mailConfig from '../config/mail.config';
+       9 import queueConfig from '../config/queue.config';
+      10 import storageConfig from '../config/storage.config';
+     … +54 lines (ctrl+o to expand)
+
+● Write(nestjs-project/src/worker.main.ts)
+  ⎿  Wrote 13 lines to nestjs-project/src/worker.main.ts
+       1 import { Logger } from '@nestjs/common';
+       2 import { NestFactory } from '@nestjs/core';
+       3 import { WorkerModule } from './worker/worker.module';
+       4 
+       5 /** Video worker entrypoint: application context without HTTP (p
+         hase-03-videos/TD-04). */
+       6 async function bootstrap(): Promise<void> {
+       7   const app = await NestFactory.createApplicationContext(WorkerM
+         odule);
+       8   // Closes the BullMQ worker on SIGTERM, so `docker compose sto
+     … +6 lines (ctrl+o to expand)
+
+● Bash(python3 - <<'EOF'
+      import re…)
+  ⎿  12:    "start:dev": "nest start --watch",
+     13:    "start:debug": "nest start --debug --watch",
+     14:    "start:prod": "node dist/main",
+     … +5 lines (ctrl+o to expand)
+  ⎿  Updated nestjs-project/package.json +2
+      12      "start:dev": "nest start --watch",
+      13      "start:debug": "nest start --debug --watch",
+      14      "start:prod": "node dist/main",
+      15 +    "start:worker": "node dist/worker.main",                   
+      16 +    "start:worker:dev": "nest start --watch --entryFile worker.
+         +main",                                                         
+      17      "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
+      18      "test": "jest",
+      19      "test:watch": "jest --watch",
+
+● Agora o serviço video-worker no Compose:
+
+● Update(nestjs-project/compose.yaml)
+  ⎿  Added 18 lines
+      19        minio:
+      20          condition: service_started
+      21 
+      22 +  # Consumer of the `videos` queue: same image/code as the API,
+         + own entrypoint                                                
+      23 +  # (phase-03-videos/TD-04).                                   
+      24 +  video-worker:                                                
+      25 +    build:                                                     
+      26 +      context: .                                               
+      27 +      dockerfile: Dockerfile.dev                               
+      28 +    command: npm run start:worker:dev                          
+      29 +    volumes:                                                   
+      30 +      - .:/home/node/app                                       
+      31 +    depends_on:                                                
+      32 +      db:                                                      
+      33 +        condition: service_healthy                             
+      34 +      redis:                                                   
+      35 +        condition: service_healthy                             
+      36 +      # No healthcheck available (see nestjs-api); StorageModul
+         +e waits on boot.                                               
+      37 +      minio:                                                   
+      38 +        condition: service_started                             
+      39 +                                                               
+      40    db:
+      41      image: postgres:17
+      42      ports:
+
+● Agora os testes. Antes vejo como o integration de videos cria usuário e canal
+  (FK).
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Write(nestjs-project/src/worker/video.processor.spec.ts)
+  ⎿  Wrote 174 lines to nestjs-project/src/worker/video.processor.spec.ts
+       1 import { access, writeFile } from 'node:fs/promises';
+       2 import { dirname } from 'node:path';
+       3 import { Test } from '@nestjs/testing';
+       4 import { getRepositoryToken } from '@nestjs/typeorm';
+       5 import { type Job, UnrecoverableError } from 'bullmq';
+       6 import { InvalidMediaError } from '../media/media.errors';
+       7 import { MediaService } from '../media/media.service';
+       8 import type { ProbeResult } from '../media/media.types';
+       9 import { StorageService } from '../storage/storage.service';
+      10 import { Video } from '../videos/entities/video.entity';
+     … +164 lines (ctrl+o to expand)
+
+● Write(nestjs-project/src/worker/video.processor.integration-spec.ts)
+  ⎿  Wrote 210 lines to
+     nestjs-project/src/worker/video.processor.integration-spec.ts
+       1 import { randomUUID } from 'node:crypto';
+       2 import { readFile } from 'node:fs/promises';
+       3 import { ListObjectsV2Command, type S3Client } from '@aws-sdk/cl
+         ient-s3';
+       4 import { ConfigModule } from '@nestjs/config';
+       5 import { Test, type TestingModule } from '@nestjs/testing';
+       6 import { TypeOrmModule } from '@nestjs/typeorm';
+       7 import { type Job, UnrecoverableError } from 'bullmq';
+       8 import { DataSource, type Repository } from 'typeorm';
+       9 import { RefreshToken } from '../auth/entities/refresh-token.ent
+     … +202 lines (~8 KB) (ctrl+o to expand)
+
+● Write(nestjs-project/src/worker/worker.module.spec.ts)
+  ⎿  Wrote 27 lines to nestjs-project/src/worker/worker.module.spec.ts
+       1 import { Test } from '@nestjs/testing';
+       2 import { DataSource } from 'typeorm';
+       3 import { useTestQueuePrefix } from '../test/test-queue';
+       4 import { Video } from '../videos/entities/video.entity';
+       5 import { VideoProcessor } from './video.processor';
+       6 import { WorkerModule } from './worker.module';
+       7 
+       8 describe('WorkerModule', () => {
+       9   it('should compile with config, TypeORM, queue, storage and me
+         dia wiring the VideoProcessor', async () => {
+     … +18 lines (ctrl+o to expand)
+
+● Rodando os testes do SI no container:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● 15 testes passando. Agora tsc, lint e a regressão completa.
+
+● Bash(docker compose exec -T nestjs-api npx tsc --noEmit; echo "tsc=$?"; docker
+      compose exec -T nestjs-api npm run lint 2>&1 | grep -E "error|✖" | head;
+      git status --…)
+  ⎿  tsc=0
+     ✖ 23 problems (0 errors, 23 warnings)
+      M compose.yaml
+     … +8 lines (ctrl+o to expand)
+  ⎿  Updated nestjs-project/src/worker/worker.module.spec.ts +4 -3
+      16      expect(moduleRef.get(VideoProcessor)).toBeInstanceOf(VideoP
+          rocessor);
+      17      // Video#channel resolves: Channel/User metadata is registe
+          red too.
+      18      expect(
+      19 -      moduleRef.get(DataSource).getMetadata(Video).findRelation
+         -WithPropertyPath(                                              
+      20 -        'channel',                                             
+      21 -      ),                                                       
+      19 +      moduleRef                                                
+      20 +        .get(DataSource)                                       
+      21 +        .getMetadata(Video)                                    
+      22 +        .findRelationWithPropertyPath('channel'),              
+      23      ).toBeDefined();
+      24 
+      25      await moduleRef.close();
+  ⎿  (timeout 10m)
+
+● Regressão passou (262 unit/integration e 76 e2e); falta checar os critérios de
+  aceite do Compose no ambiente real, então subo o video-worker, um container
+  novo que não afeta os existentes. · summary
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Monitor(Wait for worker boot log)  ⎿  Monitor started · task b5jkban5e · timeout 5m
+
+● Enquanto o worker compila, vejo o fluxo de cadastro/login do helper e2e, para
+  reproduzir um upload real pela API.
+
+  Searched for 2 patterns, listed 1 directory (ctrl+o to expand)
+
+● Monitor "Wait for worker boot log" stream ended
+
+● O worker subiu, então vou subir a API em background só para verificar se um
+  vídeo concluído chega a ready. Paro o processo ao final, já que os testes já
+  rodaram. · summary
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Monitor(Wait for API to answer 200)
+  ⎿  Monitor started · task bregi4f83 · timeout 5m
+
+● Enquanto a API sobe, preparo o script do fluxo real: cadastro com token vindo
+  do Mailpit, login, POST /videos, PUT da parte, complete e espera pelo ready.
+
+  Made 1 scratchpad edit +47, searched for 1 pattern (ctrl+o to expand)
+
+● Monitor "Wait for API to answer 200" stream ended
+
+● A API está no ar. Rodando o fluxo real:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Fluxo completo funcionando: o complete devolveu processing e o video-worker
+  levou o vídeo a ready, com duração, metadados e thumbnail. Confiro nos logs
+  quem consumiu o job:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● O job foi processado pelo video-worker, e a API não registrou nenhum log do
+  processor. Agora vou contar os workers da fila videos no Redis, com os dois
+  processos rodando, para confirmar o critério. · summary
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Só há 1 worker na fila, e o IP dele (172.18.0.7) é o do video-worker, não o da
+  API (172.18.0.6). Paro o start:dev da API para deixar o ambiente como estava:
+
+● Stop Task
+  ⎿  docker compose exec -T nestjs-api npm run start:dev >
+     /tmp/claude-1000/-home-teiabessa-mbaengsoft-mba-ia-streamTube-greenfie
+     ld/6b94f8ca-c23a-4cce-bf25-bc33ff8ef… · stopped
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Interromper o docker compose exec não encerrou o processo dentro do container.
+  Encerro os processos do start:dev diretamente:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Os processos zumbis restantes não têm efeito, pois o tail como PID 1 não os
+  recolhe. Vou repetir a suíte e2e, já com o video-worker rodando, para
+  confirmar que ele não interfere nos testes. · summary
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● As 76 e2e continuam passando com o worker no ar, e ele não consumiu nenhum job
+  dos testes: no log aparece só o job da verificação manual. Atualizo o
+  progress.md e faço o commit.
+
+● Update(docs/phases/phase-03-videos/progress.md)
+  ⎿  Added 31 lines, removed 3 lines
+      138    - **Arquivos além dos listados no plano:** `media.constants.
+           ts`, `media.errors.ts` e `media.types.ts`.
+      139 
+      140  ### SI-03.10 — Video Worker: processor, WorkerModule e entrypo
+           int próprio
+      141 -- **Status:** pending                                         
+      142 -- **Tests:** —                                                
+      143 -- **Observations:** none                                      
+      141 +- **Status:** completed                                       
+      142 +- **Tests:** 15 passing:                                      
+      143 +  - `video.processor.spec.ts`: 9 unit.                        
+      144 +    - No-op para vídeo ausente e para `draft`/`ready`/`failed`
+          +, sem chamar storage nem media.                               
+      145 +    - Caminho feliz: URL interna com 900s, frame a 10% da dura
+          +ção e uma única atualização condicional para `ready`.         
+      146 +    - Remoção do diretório temporário.                        
+      147 +    - `InvalidMediaError` → `UnrecoverableError`.             
+      148 +    - Erro transitório de probe e de frame relançado como está
+          +.                                                             
+      149 +  - `video.processor.integration-spec.ts`: 5 testes com Postgr
+          +es, MinIO e FFmpeg reais.                                     
+      150 +    - Vídeo `ready` com duração, metadados e thumbnail `image/
+          +jpeg` no bucket.                                              
+      151 +    - Reentrega do job mantém os mesmos valores e um único obj
+          +eto de thumbnail.                                             
+      152 +    - Vídeo fora de `processing` fica intacto.                
+      153 +    - Vídeo inexistente termina sem erro.                     
+      154 +    - Objeto que não é vídeo → `UnrecoverableError`, com a lin
+          +ha ainda em `processing`.                                     
+      155 +  - `worker.module.spec.ts`: 1 teste de compilação, que também
+          + verifica a relação `Video#channel` resolvida.                
+      156 
+      157 +  Regressão: 262 unit/integration (38 suítes) e 76 e2e (7 suít
+          +es) passando, com e2e repetido já com o `video-worker` no ar. 
+          +`tsc --noEmit` limpo. `npm run lint` com 0 erros e os 23 warni
+          +ngs pré-existentes.                                           
+      158 +- **Observations:**                                           
+      159 +  - **ACs do Compose verificados manualmente.**               
+      160 +    - `docker compose up -d video-worker` sobe o container, qu
+          +e loga `Video worker started`.                                
+      161 +    - Fluxo real pelo host: cadastro, token pelo Mailpit, logi
+          +n, `POST /videos`, PUT da parte na URL pública e `complete`. O
+          + vídeo `6807ca4e-…` chegou a `ready` em ~1s, com `duration_sec
+          +onds = 3`, `metadata` e `thumbnail_key`. O thumbnail responde 
+          +403 a GET anônimo.                                            
+      162 +    - Com API (`start:dev`) e worker no ar, `Queue.getWorkers(
+          +)` da fila `videos` lista 1 worker, com o IP do `video-worker`
+          +. Nenhum log do `VideoProcessor` aparece na API.              
+      163 +    - O `start:dev` foi parado ao fim da verificação.         
+      164 +    - O vídeo e o usuário `worker-check-*@example.com` dessa v
+          +erificação ficaram no banco e no bucket de dev.               
+      165 +  - **`UsersModule` importado pelo `WorkerModule`.** É uma div
+          +ergência do plano, que só cita `forFeature([Video])`. O `autoL
+          +oadEntities` precisa dos metadados de `Channel` e `User` (rela
+          +ção `Video → Channel → User`), senão o `DataSource` não inicia
+          +liza. Importar o módulo dono registra essas entidades sem o wo
+          +rker declarar entidades de outros domínios.                   
+      166 +  - **Configuração duplicada.** O `ConfigModule.forRoot` e o `
+          +TypeOrmModule.forRootAsync` do `WorkerModule` repetem os do `A
+          +ppModule`. O plano pede o mesmo `load`/`validationSchema`. Ext
+          +rair as opções para um arquivo compartilhado exige alterar o `
+          +AppModule`, fora do escopo do SI, e fica como follow-up.      
+      167 +  - **`dist/` compartilhado.** `video-worker` e `nestjs-api` m
+          +ontam o mesmo volume, e `nest start --watch` (com `deleteOutDi
+          +r: true`) compila nos dois para o mesmo `dist/`. Na verificaçã
+          +o, os dois processos subiram e funcionaram juntos. Mesmo assim
+          +, um restart de um apaga o `dist/` enquanto o outro observa. U
+          +m `outDir` separado para o worker fica como follow-up, caso ap
+          +areça instabilidade.                                          
+      168 +  - **Atualização condicional.** O `update` para `ready` usa `
+          +{ id, status: processing }`, para nunca sobrescrever um vídeo 
+          +que saiu de `processing` durante o processamento.             
+      169 +  - **Arquivos fora da lista do plano.**                      
+      170 +    - `worker.constants.ts`, com a posição do frame a 10%, o c
+          +ontent-type e os nomes temporários.                           
+      171 +    - `videoStorageKeys.thumbnail` em `videos.constants.ts`, a
+          +o lado de `original`.                                         
+      172 +                                                              
+      173  ### SI-03.11 — Handler de falha final do processamento (retry
+           + `failed`)
+      174  - **Status:** pending
+      175  - **Tests:** —
+
+● Bash(cd /home/teiabessa/mbaengsoft/mba-ia-streamTube-greenfield && sed -i
+      's/^\*\*SIs:\*\* 9\/14 completed/**SIs:** 10\/14 completed/'
+      docs/phases/phase-03-videos/pr…)
+  ⎿  feature/phase-03-videos
+     M  docs/phases/phase-03-videos/progress.md
+     M  nestjs-project/compose.yaml
+     … +11 lines (ctrl+o to expand)
+  ⎿  Updated docs/phases/phase-03-videos/progress.md +1 -1
+      1  # phase-03-videos — Progress
+      2 
+      3  **Status:** in_progress
+      4 -**SIs:** 9/14 completed                                         
+      4 +**SIs:** 10/14 completed                                        
+      5 
+      6  ### SI-03.1 — Infra: Redis, MinIO, FFmpeg e bibliotecas da fase
+      7  - **Status:** completed
+
+● O SI-03.10 está pronto: os testes passam e um vídeo enviado pela API de
+  verdade chegou a ready processado pelo novo container video-worker. Está no
+  commit 22eac70 na feature/phase-03-videos, sem push.
+
+  Testes do SI: 15 passando.
+  - video.processor.spec.ts, 9 unitários:
+    - não faz nada quando o vídeo não existe ou está em draft, ready ou failed;
+    - no caminho normal, tira o frame a 10% da duração e grava ready numa única
+      atualização;
+    - apaga o diretório temporário do JPEG;
+    - InvalidMediaError vira UnrecoverableError;
+    - erros transitórios do probe e do frame são relançados sem mudança.
+  - video.processor.integration-spec.ts, 5 testes com Postgres, MinIO e FFmpeg
+    reais:
+    - o vídeo termina ready com duração, metadados e thumbnail image/jpeg no
+      bucket;
+    - processar o mesmo job de novo mantém os mesmos valores e um único objeto
+      de thumbnail;
+    - um vídeo fora de processing não é alterado, e um vídeo inexistente termina
+      sem erro;
+    - um arquivo que não é vídeo lança UnrecoverableError, e a linha continua
+      processing (o failed é do SI-03.11).
+  - worker.module.spec.ts, 1 teste: o módulo compila e a relação Video#channel
+    resolve.
+
+  Verificação completa (no container, com start:dev parado):
+  - npm test -- --runInBand: 262 testes passando em 38 suítes.
+  - npm run test:e2e -- --runInBand: 76 passando em 7 suítes. Rodei de novo com
+    o video-worker no ar, e ele não pegou nenhum job dos testes.
+  - npx tsc --noEmit: sem erros.
+  - npm run lint: 0 erros e os mesmos 23 warnings de antes.
+
+  Critérios do Compose, conferidos à mão:
+  - docker compose up -d video-worker sobe o container, e o log mostra Video 
+    worker started.
+  - Fluxo real: cadastro, confirmação pelo Mailpit, login, POST /videos, envio
+    da parte e complete. Em cerca de 1s o vídeo estava ready, com duração de 3s,
+    metadados e thumbnail.
+  - A API só publica: com API e worker rodando, a fila videos tem 1 consumidor,
+    e o IP dele é o do video-worker.
+  - Para isso subi o start:dev da API e depois o parei. O vídeo e o usuário de
+    teste (worker-check-*@example.com) ficaram no banco e no bucket de dev.
+
+  Decisões que tomei além do plano:
+  - UsersModule no WorkerModule: o plano só cita forFeature([Video]), mas sem os
+    metadados de Channel e User o banco nem inicializa, por causa da relação
+    Video → Channel → User. Importei o módulo que já registra essas entidades.
+  - Atualização protegida: a gravação de ready só acontece se o vídeo ainda
+    estiver em processing.
+  - Arquivos além da lista do plano: criei worker.constants.ts e adicionei
+    videoStorageKeys.thumbnail em videos.constants.ts.
+
+  Pendências que deixei fora do escopo (anotadas no progress.md):
+  - Configuração duplicada: a configuração de ConfigModule e TypeORM do
+    WorkerModule repete a do AppModule. Extrair para um arquivo compartilhado
+    exige mexer no AppModule.
+  - dist/ compartilhado: API e worker compilam em modo watch para a mesma pasta,
+    e cada restart apaga essa pasta. Na verificação os dois rodaram juntos sem
+    problema, mas um diretório de saída separado para o worker resolveria, se
+    aparecer instabilidade.
+
+  Seguir para SI-03.11?
+
+✻ Baked for 2m 55s · done 9:02 PM
+
+※ recap: Estamos implementando a Fase 03 de vídeos SI por SI. O SI-03.10, o worker que processa vídeos em container próprio, está pronto, com os testes passando e commit feito. Aguardo seu ok para começar o SI-03.11, que marca o vídeo como `failed` quando o processamento falha de vez. (turn off recaps in /config)
+
+❯ Antes de seguir, resolva agora a pendência do dist/ compartilhado, que está   
+  no escopo do SI-03.10 (entrypoint e container do worker): faça o video-worker 
+  compilar para um outDir separado (ex.: dist-worker/), para que um restart da  
+  API nunca apague os arquivos do worker e vice-versa. Mantenha o padrão do     
+  projeto (nest-cli/tsconfig), adicione o outDir novo ao .gitignore se          
+  necessário, verifique com os dois processos rodando juntos (inclusive         
+  reiniciando a API enquanto o worker está no ar) e rode a regressão. Registre  
+  no progress.md do SI-03.10 e faça um commit separado: "fix(worker): build     
+  worker to its own outDir".                                                    
+
+● Antes de mudar, confiro no context7 as opções do Nest CLI (nest start 
+  -p/--path, --config) e onde o build incremental grava o .tsbuildinfo hoje.
+
+  Called context7, ran 1 shell command (ctrl+o to expand)
+
+● Segundo a doc e o --help do CLI 11.0.16, o tsconfig vem de nest start -p, e
+  dele saem o outDir, o deleteOutDir, a cópia de assets e o entryFile. Como o
+  .tsbuildinfo fica em dist/ por padrão, vou separá-lo do outDir. · summary
+
+● Write(nestjs-project/tsconfig.worker.json)
+  ⎿  Wrote 6 lines to nestjs-project/tsconfig.worker.json
+      1 {
+      2   "extends": "./tsconfig.build.json",
+      3   "compilerOptions": {
+      4     "outDir": "./dist-worker"
+      5   }
+      6 }
+● Bash(sed -i 's#"start:worker:dev": "nest start --watch --entryFile
+      worker.main"#"start:worker:dev": "nest start --watch --path
+      tsconfig.worker.json --entryFile worke…)
+  ⎿  15:    "start:worker": "node dist/worker.main",
+     16:    "start:worker:dev": "nest start --watch --path tsconfig.worker.
+     json --entryFile worker.main",
+     … +7 lines (ctrl+o to expand)
+  ⎿  Updated nestjs-project/.gitignore +1
+      1  # compiled output
+      2  /dist
+      3 +/dist-worker                                                    
+      4  /node_modules
+      5  /build
+      6 
+  ⎿  Updated nestjs-project/package.json +1 -1
+      13      "start:debug": "nest start --debug --watch",
+      14      "start:prod": "node dist/main",
+      15      "start:worker": "node dist/worker.main",
+      16 -    "start:worker:dev": "nest start --watch --entryFile worker.
+         -main",                                                         
+      16 +    "start:worker:dev": "nest start --watch --path tsconfig.wor
+         +ker.json --entryFile worker.main",                             
+      17      "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
+      18      "test": "jest",
+      19      "test:watch": "jest --watch",
+
+● Reinicio o video-worker para ele usar o script novo, e confiro que compilou em
+  dist-worker/:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Monitor(Wait for worker boot from dist-worker)
+  ⎿  Monitor started · task bclt5r2su · timeout 5m
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Monitor "Wait for worker boot from dist-worker" stream ended
+
+● Esse "erro" é só o log de encerramento do processo antigo, que recebeu SIGTERM
+  no restart. Aguardo o boot do processo novo:
+
+● Monitor(Wait for the new worker process to boot)
+  ⎿  Monitor started · task b88o1sdv1 · timeout 5m
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Monitor event: "Wait for the new worker process to boot"
+  video-worker-1  | > nest start --watch --path tsconfig.worker.json --entryFile
+  worker.main
+  video-worker-1  | [12:09:17 AM] Found 0 errors. Watching for file changes.
+  video-worker-1  | [12:09:19 AM] Found 89 errors. Watching for file changes.
+  video-worker-1  | [Nest] 33  - 11/26/2026, 12:09:19 AM     LOG [VideoWorker] 
+  Video worker started
+  app.controller.d.ts
+  app.controller.js
+  app.controller.js.map
+  dist-worker/tsconfig.worker.tsbuildinfo
+
+● Monitor "Wait for the new worker process to boot" stream ended
+
+● O worker já roda de dist-worker/worker.main, com o .tsbuildinfo próprio. Mas o
+  log mostra uma segunda compilação com Found 89 errors, que preciso entender
+  antes de seguir:
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+● A causa está no tsconfig.build.json, que só exclui dist, então a recompilação
+  incremental do worker passa a ler os .d.ts de dist-worker/. Vou excluir
+  dist-worker nos tsconfigs, já que a API sofreria o mesmo problema. · summary
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+● Update(nestjs-project/tsconfig.build.json)
+  ⎿  Added 1 line, removed 1 line
+      1  {
+      2    "extends": "./tsconfig.json",
+      3 -  "exclude": ["node_modules", "test", "dist", "**/*spec.ts"]    
+      3 +  "exclude": ["node_modules", "test", "dist", "dist-worker", "**
+        +/*spec.ts"]                                                     
+      4  }
+
+● Update(nestjs-project/tsconfig.json)
+  ⎿  Added 3 lines, removed 1 line
+      22      "strictBindCallApply": false,
+      23      "noFallthroughCasesInSwitch": false,
+      24      "types": ["jest", "node"]
+      25 -  }                                                            
+      25 +  },                                                           
+      26 +  // Default exclude (node_modules + outDir) plus the worker's 
+         +own outDir.                                                    
+      27 +  "exclude": ["node_modules", "dist", "dist-worker"]           
+      28  }
+
+● O Jest unitário e o e2e não incluem dist-worker/, então ele não afeta os
+  testes. Vou reiniciar o worker e forçar uma recompilação incremental para
+  confirmar que o TS5055 desapareceu. · summary
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Monitor(Wait for boot, trigger incremental recompile, report)
+  ⎿  Monitor started · task boa2l01q9 · timeout 5m
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Monitor(Short wait for the recompile monitor)
+  ⎿  Monitor started · task bs7fk9yog · timeout 5m
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Aguardando a recompilação do worker. Vou conferir o log diretamente:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Monitor "Wait for boot, trigger incremental recompile, report" stream ended
+
+● O build anterior tinha 89 erros, mas depois do restart com o tsconfig
+  corrigido saiu com 0; agora disparo uma recompilação incremental para
+  confirmar. · summary
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● O loop parou cedo por causa de uma linha antiga, então refaço filtrando pelo
+  horário do touch:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Monitor "Short wait for the recompile monitor" stream ended
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● O touch sozinho não dispara o watcher do tsc, porque o conteúdo não mudou.
+  Faço uma alteração real e temporária (um comentário), aguardo a recompilação e
+  desfaço:
+  Ran 1 shell command (ctrl+o to expand)
+
+● A recompilação incremental do worker saiu com 0 erros, e o arquivo voltou ao
+  original. Agora o teste com os dois processos juntos. Subo a API (start:dev)
+  com o worker no ar:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Monitor(Wait for API to answer 200)
+  ⎿  Monitor started · task b5ipucgn0 · timeout 5m
+
+● Enquanto a API sobe, preparo o script do teste cruzado. Ele registra inode e
+  mtime dos entrypoints e checa os processos:
+
+  Made 1 scratchpad edit +9, ran 2 shell commands (ctrl+o to expand)
+
+● Monitor "Wait for API to answer 200" stream ended
+
+● Os dois estão no ar, cada um rodando do seu outDir. Agora reinicio a API com o
+  worker rodando: mato o start:dev e subo de novo, o que faz o deleteOutDir
+  apagar e recriar o dist/.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Background command "Start API dev server in background (run 1)" failed with
+  exit code 143
+
+● Esse aviso de falha é esperado: o exit 143 é o SIGTERM que eu mandei para a
+  primeira execução da API. Aguardo a API reiniciada e comparo os snapshots:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Depois do restart da API, dist/main.js ganhou um inode novo (226471 → 226473),
+  então foi recriado; já o worker segue no mesmo processo (PID 60), com o
+  arquivo e o mtime intactos. Vou conferir que ele não recompilou nem reiniciou
+  e que ainda processa jobs, rodando o fluxo real de novo. · summary
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Com a API reiniciada, o worker não recompilou nem reiniciou, e o vídeo
+  60d7b463-… chegou a ready. Agora o sentido inverso: reinicio o worker com a
+  API no ar.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● O worker reiniciou e recompilou sem afetar a API, que segue intacta no mesmo
+  processo. Vou rodar um último fluxo com o worker novo e depois paro a API. 
+  · summary
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Background command "Restart API dev server in background (run 2)" failed with
+  exit code 143
+
+● A API foi parada (o exit 143 é o SIGTERM esperado). Com o start:dev parado,
+  rodo a regressão completa. Incluí o npm run build, porque o
+  tsconfig.build.json mudou:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Tudo verde, e o dist/ do build continua com a estrutura plana (dist/main.js,
+  sem dist-worker dentro). A última linha do lint saiu em branco, então confiro
+  a contagem:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Lint com 0 erros e os 23 warnings de antes. Registro no progress.md do
+  SI-03.10, substituindo a pendência do dist/ pela solução:
+
+  Read 1 file, ran 1 shell command (ctrl+o to expand)
+
+● Update(docs/phases/phase-03-videos/progress.md)
+  ⎿  Added 15 lines, removed 1 line
+      164      - O vídeo e o usuário `worker-check-*@example.com` dessa v
+           erificação ficaram no banco e no bucket de dev.
+      165    - **`UsersModule` importado pelo `WorkerModule`.** É uma div
+           ergência do plano, que só cita `forFeature([Video])`. O `autoL
+           oadEntities` precisa dos metadados de `Channel` e `User` (rela
+           ção `Video → Channel → User`), senão o `DataSource` não inicia
+           liza. Importar o módulo dono registra essas entidades sem o wo
+           rker declarar entidades de outros domínios.
+      166    - **Configuração duplicada.** O `ConfigModule.forRoot` e o `
+           TypeOrmModule.forRootAsync` do `WorkerModule` repetem os do `A
+           ppModule`. O plano pede o mesmo `load`/`validationSchema`. Ext
+           rair as opções para um arquivo compartilhado exige alterar o `
+           AppModule`, fora do escopo do SI, e fica como follow-up.
+      167 -  - **`dist/` compartilhado.** `video-worker` e `nestjs-api` m
+          -ontam o mesmo volume, e `nest start --watch` (com `deleteOutDi
+          -r: true`) compila nos dois para o mesmo `dist/`. Na verificaçã
+          -o, os dois processos subiram e funcionaram juntos. Mesmo assim
+          -, um restart de um apaga o `dist/` enquanto o outro observa. U
+          -m `outDir` separado para o worker fica como follow-up, caso ap
+          -areça instabilidade.                                          
+      167 +  - **`outDir` próprio do worker (`dist-worker/`), resolvido n
+          +o commit `fix(worker): build worker to its own outDir`.**     
+      168 +    - **Problema:** `video-worker` e `nestjs-api` montam o mes
+          +mo volume. No commit do SI, `nest start --watch`, com `deleteO
+          +utDir: true`, compilava os dois para o mesmo `dist/`, e o rest
+          +art de um apagava os arquivos do outro.                       
+      169 +    - **Solução, seguindo o padrão nest-cli/tsconfig:**       
+      170 +      - Novo `tsconfig.worker.json`, que estende o `tsconfig.b
+          +uild.json` e só troca o `outDir` para `./dist-worker`. O `.tsb
+          +uildinfo` vai junto, em `dist-worker/tsconfig.worker.tsbuildin
+          +fo`.                                                          
+      171 +      - `start:worker:dev` passou a ser `nest start --watch --
+          +path tsconfig.worker.json --entryFile worker.main`. O `nest st
+          +art --path` tira desse tsconfig o `outDir` usado pelo `deleteO
+          +utDir`, pela cópia de assets e pelo caminho do entrypoint.    
+      172 +      - `/dist-worker` foi adicionado ao `.gitignore`.        
+      173 +    - **`exclude` necessário:** o `tsconfig.build.json` excluí
+          +a só `dist`. Sem isso, a recompilação incremental do worker li
+          +a os `.d.ts` de `dist-worker/` como entrada e falhava com 89× 
+          +`TS5055 … would overwrite input file`. O build da API também p
+          +assaria a incluí-los, o que mudaria o `rootDir` e o caminho `d
+          +ist/main`. Então `dist-worker` entrou no `exclude` do `tsconfi
+          +g.build.json`, herdado pelo `tsconfig.worker.json`. Também ent
+          +rou no `tsconfig.json`, que antes não tinha `exclude` e agora 
+          +repete o padrão (`node_modules`, `dist`) mais `dist-worker`.  
+      174 +    - **Produção inalterada:** `start:worker` continua `node d
+          +ist/worker.main`. Lá não há watch, e um único `npm run build` 
+          +gera os dois entrypoints em `dist/`, como o plano define.     
+      175 +    - **Verificação com os dois processos rodando juntos:**   
+      176 +      - O worker roda de `dist-worker/worker.main`, e a recomp
+          +ilação incremental (edição temporária de um fonte, depois desf
+          +eita) saiu com 0 erros.                                       
+      177 +      - **Restart da API com o worker no ar:** `dist/main.js` 
+          +foi recriado (inode 226471 → 226473). `dist-worker/worker.main
+          +.js` ficou com o mesmo inode e o mesmo mtime. O worker seguiu 
+          +no mesmo PID, sem recompilar nem reiniciar, e processou um víd
+          +eo real até `ready` (`60d7b463-…`).                           
+      178 +      - **Restart do worker com a API no ar:** o worker recomp
+          +ilou o `dist-worker/` e trocou de PID (60 → 32). `dist/main.js
+          +` ficou intacto, a API seguiu no mesmo PID, respondendo 200, s
+          +em recompilar. Outro vídeo real chegou a `ready` (`7dc61c02-…`
+          +).                                                            
+      179 +      - O `start:dev` foi parado ao fim.                      
+      180 +    - **Regressão após a correção:** `tsc --noEmit` limpo. `np
+          +m run lint` com 0 erros e os 23 warnings pré-existentes. `npm 
+          +run build` ok, com `dist/main.js` e `dist/worker.main.js` e se
+          +m `dist-worker` dentro de `dist/`. 262 unit/integration (38 su
+          +ítes) e 76 e2e (7 suítes) passando.                           
+      181 +    - Os vídeos e usuários `worker-check-*@example.com` dessas
+          + verificações ficaram no banco e no bucket de dev.            
+      182    - **Atualização condicional.** O `update` para `ready` usa `
+           { id, status: processing }`, para nunca sobrescrever um vídeo
+           que saiu de `processing` durante o processamento.
+      183    - **Arquivos fora da lista do plano.**
+      184      - `worker.constants.ts`, com a posição do frame a 10%, o c
+           ontent-type e os nomes temporários.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Resolvido: o video-worker agora compila para dist-worker/, e reiniciar a API
+  ou o worker não apaga mais os arquivos do outro. Está num commit separado,
+  8e03c21 (fix(worker): build worker to its own outDir), na
+  feature/phase-03-videos, sem push.
+
+  O que mudou (seguindo o padrão nest-cli/tsconfig):
+  - tsconfig.worker.json (novo): estende o tsconfig.build.json e só troca o
+    outDir para ./dist-worker. O arquivo do build incremental (.tsbuildinfo)
+    também fica separado.
+  - package.json: o start:worker:dev passou a ser nest start --watch --path 
+    tsconfig.worker.json --entryFile worker.main. O Nest usa esse tsconfig para
+    decidir qual pasta apagar, para onde copiar os assets e de onde rodar o
+    entrypoint.
+  - .gitignore: ganhou /dist-worker.
+  - tsconfig.build.json e tsconfig.json: passaram a excluir dist-worker. Sem
+    isso, a primeira recompilação do worker falhou com 89 erros TS5055 … would 
+    overwrite input file, porque o tsc lia os próprios .d.ts gerados como
+    código-fonte. O build da API teria o mesmo problema e passaria a gerar
+    dist/src/main.js em vez de dist/main.js.
+  - Produção: não mudei o start:worker (node dist/worker.main). Lá não há modo
+    watch, e um único npm run build gera os dois entrypoints em dist/, como o
+    plano define.
+
+  Verificação com os dois processos rodando juntos:
+  - Recompilação do worker: fiz uma edição temporária num fonte e depois desfiz.
+    Ele recompilou com 0 erros.
+  - API reiniciada com o worker no ar: dist/main.js foi apagado e recriado.
+    dist-worker/worker.main.js não mudou, e o worker seguiu no mesmo processo,
+    sem recompilar. Um vídeo enviado pela API chegou a ready.
+  - Worker reiniciado com a API no ar: o worker recompilou dist-worker/. O dist/
+    não mudou, e a API seguiu no mesmo processo, respondendo 200. Outro vídeo
+    real chegou a ready.
+  - Ao final, parei o start:dev. Os vídeos e usuários worker-check-*@example.com
+    dessas verificações ficaram no banco e no bucket de dev.
+
+  Regressão (com start:dev parado):
+  - npx tsc --noEmit: sem erros.
+  - npm run lint: 0 erros e os mesmos 23 warnings de antes.
+  - npm run build: ok, e o dist/ continua com main.js e worker.main.js na raiz.
+  - npm test -- --runInBand: 262 testes passando em 38 suítes.
+  - npm run test:e2e -- --runInBand: 76 passando em 7 suítes.
+
+  Registrei a solução e a verificação no progress.md do SI-03.10, no lugar da
+  pendência.
+
+  Seguir para SI-03.11?
+
+✻ Baked for 4m 36s · done 9:12 PM
+
+※ recap: Estamos implementando a Fase 03 (vídeos): os SIs 03.9 e 03.10 estão concluídos e commitados, e o worker agora compila para `dist-worker/` com a regressão verde. Próximo passo: aguardo seu ok para seguir para o SI-03.11.
+
+❯ /context 
+  ⎿  Context usage
+     ⛀ ⛁ ⛁ ⛁ ⛁ ⛀ ⛀ ⛀ ⛀ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁   Opus 5.5
+     ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁   claude-opus-5-5
+     ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶   233.5k/1m tokens (23%)
+     ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ 
+     ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶   Estimated usage by category
+     ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶   ⛁ System prompt: 3k tokens (0.3%)
+     ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶   ⛁ System tools: 20.3k tokens (2%)
+     ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶   ⛁ MCP tools: 2k tokens (0.2%)
+     ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶   ⛁ MCP server instructions: 945 tokens (0.1%)
+     ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛝ ⛝ ⛝ ⛝ ⛝ ⛝ ⛝   ⛁ Custom agents: 1.1k tokens (0.1%)
+                                               ⛁ Memory files: 2k tokens (0.2%)
+                                               ⛁ Skills: 7.5k tokens (0.7%)
+                                               ⛁ Messages: 196.8k tokens (20%)
+                                               ⛶ Free space: 733.5k tokens (73%)
+                                               ⛝ Autocompact buffer: 33k tokens (3%)
+
+     Auto-compact window:  1m tokens
+
+     MCP tools · /mcp (loaded on-demand)
+     └ 13 tools · 2k tokens
+
+     Custom agents · .claude/agents/
+     └ 6 agents · 1.1k tokens
+
+     Memory files · /memory
+     └ 2 files · 2k tokens
+
+     Skills · /skills
+     └ 42 skills · 7.5k tokens
+
+     /context all to expand
+
+❯ ok, siga para o SI-03.11.                                                     
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Branch confere e a árvore está limpa. No SI-03.11, antes de escrever o
+  handler, confiro na doc do BullMQ o valor de attemptsMade no evento failed e
+  se o job pode vir undefined:
+
+  Called context7 2 times (ctrl+o to expand)
+
+● A doc mostra dois trechos que parecem conflitar sobre o attemptsMade no evento
+  failed; vou conferir no código do bullmq@6.7.8 quando o incremento acontece e
+  se failed também dispara nas tentativas intermediárias. · summary
+
+  Ran 2 shell commands (ctrl+o to expand)
+● Confirmei no código instalado que o failed é emitido em cada tentativa falha,
+  inclusive nas que serão retentadas, sempre após o moveToFailed. A condição
+  attemptsMade >= opts.attempts do plano identifica a falha final, então estou
+  implementando o handler com ela. · summary
+
+● Bash(python3 - <<'EOF'
+      p='src/worker/video.processor.ts'…)
+  ⎿  4:import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq
+     ';
+     78:  @OnWorkerEvent('failed')
+     79:  async onFailed(
+  ⎿  Updated nestjs-project/src/worker/video.processor.ts +40 -1
+      1  import { mkdtemp, readFile, rm } from 'node:fs/promises';
+      2  import { tmpdir } from 'node:os';
+      3  import { join } from 'node:path';
+      4 -import { Processor, WorkerHost } from '@nestjs/bullmq';         
+      4 +import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bu
+        +llmq';                                                          
+      5  import { Logger } from '@nestjs/common';
+      6  import { InjectRepository } from '@nestjs/typeorm';
+      7  import { type Job, UnrecoverableError } from 'bullmq';
+     ...
+       69      this.logger.log(`Video ${videoId} is ready`);
+       70    }
+       71 
+       72 +  /**                                                         
+       73 +   * Runs after every failed attempt (BullMQ already increment
+          +ed `attemptsMade`).                                           
+       74 +   * Only a final failure (unrecoverable error or attempts exh
+          +austed) marks the                                             
+       75 +   * video `failed`; intermediate ones stay `processing` for t
+          +he retry (TD-10).                                             
+       76 +   * Event handler: errors are logged, never rethrown (would c
+          +rash the worker).                                             
+       77 +   */                                                         
+       78 +  @OnWorkerEvent('failed')                                    
+       79 +  async onFailed(                                             
+       80 +    job: Job<ProcessVideoJobData> | undefined,                
+       81 +    err: Error,                                               
+       82 +  ): Promise<void> {                                          
+       83 +    if (!job) return; // stalled job already removed by remove
+          +OnFail                                                        
+       84 +    const { videoId } = job.data;                             
+       85 +    const attempts = job.opts.attempts ?? 1;                  
+       86 +    const final =                                             
+       87 +      err instanceof UnrecoverableError || job.attemptsMade >=
+          + attempts;                                                    
+       88 +    const context = { videoId, attemptsMade: job.attemptsMade,
+          + attempts, final };                                           
+       89 +                                                              
+       90 +    if (!final) {                                             
+       91 +      this.logger.warn({ ...context, message: 'Video processin
+          +g attempt failed', reason: err.message });                    
+       92 +      return;                                                 
+       93 +    }                                                         
+       94 +    this.logger.error({ ...context, message: 'Video processing
+          + failed', reason: err.message });                             
+       95 +                                                              
+       96 +    try {                                                     
+       97 +      // Conditional: a late failure event never overwrites a 
+          +video already `ready`.                                        
+       98 +      await this.videos.update(                               
+       99 +        { id: videoId, status: VideoStatus.PROCESSING },      
+      100 +        { status: VideoStatus.FAILED, failure_reason: err.mess
+          +age },                                                        
+     … +13 lines (ctrl+o to expand)
+
+● O handler está no lugar. Agora os testes unitários do onFailed, num describe
+  próprio no video.processor.spec.ts:
+
+● Bash(cat >> src/worker/video.processor.spec.ts <<'EOF'…)
+  ⎿  32:describe('VideoProcessor.process', () => {
+     176:describe('VideoProcessor.onFailed', () => {
+  ⎿  Updated nestjs-project/src/worker/video.processor.spec.ts +73
+      172      await expect(access(dirname(framePaths[0]))).rejects.toThr
+           ow();
+      173    });
+      174  });
+      175 +                                                              
+      176 +describe('VideoProcessor.onFailed', () => {                   
+      177 +  let processor: VideoProcessor;                              
+      178 +  let repo: { findOneBy: jest.Mock; update: jest.Mock };      
+      179 +                                                              
+      180 +  const failedJob = (attemptsMade: number, attempts = 3) =>   
+      181 +    ({                                                        
+      182 +      id: VIDEO_ID,                                           
+      183 +      data: { videoId: VIDEO_ID },                            
+      184 +      attemptsMade,                                           
+      185 +      opts: { attempts },                                     
+      186 +    }) as Job<ProcessVideoJobData>;                           
+      187 +                                                              
+      188 +  const expectMarkedFailed = (reason: string) => {            
+      189 +    expect(repo.update).toHaveBeenCalledTimes(1);             
+      190 +    expect(repo.update).toHaveBeenCalledWith(                 
+      191 +      { id: VIDEO_ID, status: VideoStatus.PROCESSING },       
+      192 +      { status: VideoStatus.FAILED, failure_reason: reason }, 
+      193 +    );                                                        
+      194 +  };                                                          
+      195 +                                                              
+      196 +  beforeEach(async () => {                                    
+      197 +    repo = {                                                  
+      198 +      findOneBy: jest.fn(),                                   
+      199 +      update: jest.fn().mockResolvedValue({ affected: 1 }),   
+      200 +    };                                                        
+      201 +    const moduleRef = await Test.createTestingModule({        
+      202 +      providers: [                                            
+      203 +        VideoProcessor,                                       
+      204 +        { provide: getRepositoryToken(Video), useValue: repo }
+          +,                                                             
+      205 +        { provide: StorageService, useValue: {} },            
+      206 +        { provide: MediaService, useValue: {} },              
+      207 +      ],                                                      
+      208 +    }).compile();                                             
+      209 +    processor = moduleRef.get(VideoProcessor);                
+      210 +  });                                                         
+      211 +                                                              
+     … +36 lines (ctrl+o to expand)
+
+● Agora integro com a fila real: um Worker BullMQ do processor no processo do
+  teste, com prefixo próprio e QUEUE_BACKOFF_DELAY_MS=100. Depois releio o topo
+  do spec para encaixar os imports. · summary
+
+  Read 1 file (ctrl+o to expand)
+
+● Bash(python3 - <<'EOF'
+      p='src/worker/video.processor.integration-spec.ts'…)
+  ⎿  [Nest] 35529  - 11/26/2026, 12:29:58 AM   ERROR [VideoProcessor] Objec
+     t(6) {
+       videoId: '7d96b982-71ec-403d-9afb-7c9bec51ffeb',
+     … +47 lines (ctrl+o to expand)
+  ⎿  Updated nestjs-project/src/worker/video.processor.integration-spec.ts
+     +147 -5
+       1  import { randomUUID } from 'node:crypto';
+       2  import { readFile } from 'node:fs/promises';
+       3  import { ListObjectsV2Command, type S3Client } from '@aws-sdk/c
+          lient-s3';
+       4 +import { getQueueToken } from '@nestjs/bullmq';                
+       5  import { ConfigModule } from '@nestjs/config';
+       6  import { Test, type TestingModule } from '@nestjs/testing';
+       7  import { TypeOrmModule } from '@nestjs/typeorm';
+       7 -import { type Job, UnrecoverableError } from 'bullmq';         
+       8 +import { type Job, Queue, QueueEvents, UnrecoverableError } fro
+         +m 'bullmq';                                                    
+       9  import { DataSource, type Repository } from 'typeorm';
+      10  import { RefreshToken } from '../auth/entities/refresh-token.en
+          tity';
+      11  import { VerificationToken } from '../auth/entities/verificatio
+          n-token.entity';
+      12  import { Channel } from '../channels/entities/channel.entity';
+      13 +import queueConfig from '../config/queue.config';              
+      14  import storageConfig from '../config/storage.config';
+      15  import { MediaModule } from '../media/media.module';
+      16 +import { QUEUE_NAMES } from '../queue/queue.constants';        
+      17 +import { QueueModule } from '../queue/queue.module';           
+      18  import { S3_INTERNAL_CLIENT } from '../storage/storage.constant
+          s';
+      19  import { StorageModule } from '../storage/storage.module';
+      20  import { StorageService } from '../storage/storage.service';
+     ...
+      24  } from '../test/create-test-data-source';
+      25  import { MediaFixtures } from '../test/media-fixtures';
+      26  import { TEST_S3_BUCKET, useTestBucket } from '../test/test-buc
+          ket';
+      27 +import { useTestQueuePrefix } from '../test/test-queue';       
+      28  import { User } from '../users/entities/user.entity';
+      29  import { Video } from '../videos/entities/video.entity';
+      30  import { generatePublicId } from '../videos/public-id.util';
+      31 +import { VideoProcessingQueue } from '../videos/video-processin
+         +g.queue';                                                      
+      32  import { videoStorageKeys } from '../videos/videos.constants';
+      33  import { type ProcessVideoJobData, VideoStatus } from '../video
+          s/videos.types';
+      34  import { VideoProcessor } from './video.processor';
+     ...
+      61      return (listing.Contents ?? []).map(({ Key }) => Key!).sort
+          ();
+      62    };
+      63 
+      58 -  /** A `processing` video whose original object is `body` (as 
+         -after `complete`). */                                          
+      59 -  const processingVideo = async (body: Buffer): Promise<Video> 
+         -=> {                                                           
+      64 +  /**                                                          
+      65 +   * A `processing` video whose original object is `body` (as a
+         +fter `complete`);                                              
+      66 +   * `null` leaves the object missing in the storage.          
+     … +154 lines (ctrl+o to expand)
+  ⎿  Updated nestjs-project/src/worker/video.processor.ts +16 -3
+       85      const attempts = job.opts.attempts ?? 1;
+       86      const final =
+       87        err instanceof UnrecoverableError || job.attemptsMade >=
+            attempts;
+       88 -    const context = { videoId, attemptsMade: job.attemptsMade,
+          - attempts, final };                                           
+       88 +    const context = {                                         
+       89 +      videoId,                                                
+       90 +      attemptsMade: job.attemptsMade,                         
+       91 +      attempts,                                               
+       92 +      final,                                                  
+       93 +    };                                                        
+       94 
+       95      if (!final) {
+       91 -      this.logger.warn({ ...context, message: 'Video processin
+          -g attempt failed', reason: err.message });                    
+       96 +      this.logger.warn({                                      
+       97 +        ...context,                                           
+       98 +        message: 'Video processing attempt failed',           
+       99 +        reason: err.message,                                  
+      100 +      });                                                     
+      101        return;
+      102      }
+       94 -    this.logger.error({ ...context, message: 'Video processing
+          - failed', reason: err.message });                             
+      103 +    this.logger.error({                                       
+      104 +      ...context,                                             
+      105 +      message: 'Video processing failed',                     
+      106 +      reason: err.message,                                    
+      107 +    });                                                       
+      108 
+      109      try {
+      110        // Conditional: a late failure event never overwrites a 
+           video already `ready`.
+  ⎿  (timeout 5m)
+
+● 23 testes passaram, mas o log mostrou que o failure_reason gravado inclui a
+  URL pré-assinada inteira, que vai ser exposta ao dono do vídeo no SI-03.12,
+  então troco essa URL por <source> e corrijo o comentário do teste (404, não
+  403). Vou confirmar antes se o SI-03.12 realmente expõe esse campo. · summary
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Confirmado: o plano expõe o failure_reason no GET /videos/:id (linhas 409 e
+  651). Implemento a limpeza como uma função pequena no worker, aplicada ao
+  valor gravado e ao log:
+
+● Write(nestjs-project/src/worker/failure-reason.util.ts)
+  ⎿  Wrote 11 lines to nestjs-project/src/worker/failure-reason.util.ts
+       1 /** Any http(s) URL, up to whitespace or the `: ` that ffmpeg pu
+         ts after its input. */
+       2 const URL_PATTERN = /https?:\/\/\S+?(?=:\s|\s|$)/g;
+       3 
+       4 /**
+       5  * `failure_reason` is shown to the video owner (`GET /videos/:i
+         d`). ffprobe /
+       6  * ffmpeg echo their input in stderr, which here is a presigned
+         URL carrying
+       7  * the internal host, the bucket and a valid signature: never pe
+     … +5 lines (ctrl+o to expand)
+
+  Read 1 file (ctrl+o to expand)
+
+● Bash(cd /home/teiabessa/mbaengsoft/mba-ia-streamTube-greenfield/nestjs-project
+      && python3 - <<'EOF'
+      p='src/worker/video.processor.ts'…)
+  ⎿  PASS src/worker/failure-reason.util.spec.ts
+     PASS src/worker/video.processor.integration-spec.ts (5.798 s)
+     PASS src/worker/worker.module.spec.ts
+     … +2 lines (ctrl+o to expand)
+  ⎿  Created nestjs-project/src/worker/failure-reason.util.spec.ts +25
+       1 +import { toFailureReason } from './failure-reason.util';       
+       2 +                                                               
+       3 +describe('toFailureReason', () => {                            
+       4 +  it('should replace a presigned URL followed by the ffmpeg ": 
+         +" separator, keeping the cause', () => {                       
+       5 +    expect(                                                    
+       6 +      toFailureReason(                                         
+       7 +        'ffprobe could not read the file: http://minio:9000/b/v
+         +ideos/1/original?X-Amz-Signature=s&x-id=GetObject: Invalid data
+         + found when processing input',                                 
+       8 +      ),                                                       
+       9 +    ).toBe(                                                    
+      10 +      'ffprobe could not read the file: <source>: Invalid data 
+         +found when processing input',                                  
+      11 +    );                                                         
+      12 +  });                                                          
+      13 +                                                               
+      14 +  it('should replace every URL, including one at the end of the
+         + message', () => {                                             
+      15 +    expect(toFailureReason('a http://h:1/x?sig=1 b https://h/y?
+         +sig=2')).toBe(                                                 
+      16 +      'a <source> b <source>',                                 
+      17 +    );                                                         
+      18 +  });                                                          
+      19 +                                                               
+      20 +  it('should keep a message without URLs unchanged', () => {   
+      21 +    expect(toFailureReason('No video stream found in the file')
+         +).toBe(                                                        
+      22 +      'No video stream found in the file',                     
+      23 +    );                                                         
+      24 +  });                                                          
+      25 +});                                                            
+  ⎿  Updated nestjs-project/src/worker/video.processor.integration-spec.ts
+     +5 -2
+      316        const row = await waitForStatus(video.id, VideoStatus.FA
+           ILED);
+      317        expect(row.status).toBe(VideoStatus.FAILED);
+      318        expect(row.failure_reason).toMatch(/ffprobe could not re
+           ad the file/);
+      319 +      expect(row.failure_reason).not.toMatch(/X-Amz-|https?:\/
+          +\//);                                                         
+      320      }, 30_000);
+      321 
+      322      it('should retry a transient failure and mark it failed af
+           ter exactly 3 attempts, staying processing in between', async
+           () => {
+      322 -      const video = await processingVideo(null); // object mis
+          -sing: ffprobe gets 403                                        
+      323 +      const video = await processingVideo(null); // object mis
+          +sing: ffprobe gets 404 (transient)                            
+      324        const rowsAtAttemptStart: Pick<Video, 'status' | 'failur
+           e_reason'>[] = [];
+      325        const presign = workerStorage.presignInternalGet.bind(wo
+           rkerStorage);
+      326        const spy = jest
+     ...
+      344          ]);
+      345          const row = await waitForStatus(video.id, VideoStatus.
+           FAILED);
+      346          expect(row.status).toBe(VideoStatus.FAILED);
+      346 -        expect(row.failure_reason).toMatch(/ffprobe failed/); 
+      347 +        expect(row.failure_reason).toBe(                      
+      348 +          'ffprobe failed: <source>: Server returned 404 Not F
+          +ound',                                                        
+      349 +        );                                                    
+      350        } finally {
+      351          spy.mockRestore();
+      352        }
+  ⎿  Updated nestjs-project/src/worker/video.processor.spec.ts +13
+      231      expectMarkedFailed('ffprobe failed: 403');
+      232    });
+      233 
+      234 +  it('should strip the presigned URL echoed by ffprobe from th
+          +e stored reason', async () => {                               
+      235 +    await processor.onFailed(                                 
+      236 +      failedJob(3),                                           
+      237 +      new Error(                                              
+      238 +        'ffprobe failed: http://minio:9000/streamtube/videos/x
+          +/original?X-Amz-Signature=abc&X-Amz-Expires=900: Server return
+          +ed 404 Not Found',                                            
+      239 +      ),                                                      
+      240 +    );                                                        
+      241 +                                                              
+      242 +    expectMarkedFailed(                                       
+      243 +      'ffprobe failed: <source>: Server returned 404 Not Found
+          +',                                                            
+      244 +    );                                                        
+      245 +  });                                                         
+      246 +                                                              
+      247    it('should ignore a failed event without a job', async () =>
+            {
+      248      await processor.onFailed(undefined, new Error('stalled'));
+      249 
+  ⎿  Updated nestjs-project/src/worker/video.processor.ts +5 -4
+      15  import { Video } from '../videos/entities/video.entity';
+      16  import { videoStorageKeys } from '../videos/videos.constants';
+      17  import { type ProcessVideoJobData, VideoStatus } from '../video
+          s/videos.types';
+      18 +import { toFailureReason } from './failure-reason.util';       
+      19  import { THUMBNAIL } from './worker.constants';
+      20 
+      21  /**
+     ...
+       86      const attempts = job.opts.attempts ?? 1;
+       87      const final =
+       88        err instanceof UnrecoverableError || job.attemptsMade >=
+            attempts;
+       89 +    const reason = toFailureReason(err.message);              
+       90      const context = {
+       91        videoId,
+       92        attemptsMade: job.attemptsMade,
+       93        attempts,
+       94        final,
+       95 +      reason,                                                 
+       96      };
+       97 
+       98      if (!final) {
+       99        this.logger.warn({
+      100          ...context,
+      101          message: 'Video processing attempt failed',
+       99 -        reason: err.message,                                  
+      102        });
+      103        return;
+      104      }
+      105      this.logger.error({
+      106        ...context,
+      107        message: 'Video processing failed',
+      106 -      reason: err.message,                                    
+      108      });
+      109 
+      110      try {
+      111        // Conditional: a late failure event never overwrites a 
+           video already `ready`.
+      112        await this.videos.update(
+      113          { id: videoId, status: VideoStatus.PROCESSING },
+      113 -        { status: VideoStatus.FAILED, failure_reason: err.mess
+          -age },                                                        
+      114 +        { status: VideoStatus.FAILED, failure_reason: reason }
+          +,                                                             
+      115        );
+     … +9 lines (ctrl+o to expand)
+  ⎿  (timeout 5m)
+
+● 27 passando, agora com a URL removida do failure_reason. Regressão completa:
+
+  Read 1 file, ran 2 shell commands (ctrl+o to expand)
+
+● A causa é o .bind: com strictBindCallApply: false, ele devolve any. Tipo o
+  resultado explicitamente:
+
+● Update(nestjs-project/src/worker/video.processor.integration-spec.ts)
+  ⎿  Added 4 lines, removed 1 line
+      322      it('should retry a transient failure and mark it failed af
+           ter exactly 3 attempts, staying processing in between', async
+           () => {
+      323        const video = await processingVideo(null); // object mis
+           sing: ffprobe gets 404 (transient)
+      324        const rowsAtAttemptStart: Pick<Video, 'status' | 'failur
+           e_reason'>[] = [];
+      325 -      const presign = workerStorage.presignInternalGet.bind(wo
+          -rkerStorage);                                                 
+      325 +      // `bind` is untyped here (strictBindCallApply: false), 
+          +so type it back.                                              
+      326 +      const presign = workerStorage.presignInternalGet.bind(  
+      327 +        workerStorage,                                        
+      328 +      ) as StorageService['presignInternalGet'];              
+      329        const spy = jest
+      330          .spyOn(workerStorage, 'presignInternalGet')
+      331          .mockImplementation(async (key, expiresIn) => {
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Lint está com 0 erros (os 23 warnings de antes continuam) e o tsc está limpo;
+  a regressão completa já tinha passado e a única mudança depois disso foi um
+  cast num arquivo de teste, que rodei de novo. Agora atualizo o progress.md e
+  corrijo a nota do SI-03.9: o MinIO responde 404, não 403, para objeto ausente.
+  · summary
+
+  Read 1 file, ran 1 shell command (ctrl+o to expand)
+
+● Update(docs/phases/phase-03-videos/progress.md)
+  ⎿  Added 1 line, removed 1 line
+      116      - MP4 3s 320x240 com áudio.
+      117      - Vídeo sem áudio.
+      118      - Texto renomeado `.mp4` → `InvalidMediaError`.
+      119 -    - Objeto inexistente (403) → erro transitório.            
+      119 +    - Objeto inexistente (`404 Not Found`, corrigido no SI-03.
+          +11; antes dizia 403) → erro transitório.                      
+      120      - Timeout do `ffprobe`.
+      121      - `extractFrame` gera JPEG com assinatura `FF D8`.
+      122    - `media.module.spec.ts`: 1 teste de compilação.
+
+● Update(docs/phases/phase-03-videos/progress.md)
+  ⎿  Added 35 lines, removed 3 lines
+      185      - `videoStorageKeys.thumbnail` em `videos.constants.ts`, a
+           o lado de `original`.
+      186 
+      187  ### SI-03.11 — Handler de falha final do processamento (retry
+           + `failed`)
+      188 -- **Status:** pending                                         
+      189 -- **Tests:** —                                                
+      190 -- **Observations:** none                                      
+      188 +- **Status:** completed                                       
+      189 +- **Tests:** 12 novos passando, 27 nas suítes de `src/worker`:
+      190 +  - `video.processor.spec.ts`: 6 unit novos de `onFailed`.    
+      191 +    - `UnrecoverableError` na 1ª tentativa → `failed`.        
+      192 +    - Erro comum com `attemptsMade` 1 e 2 de 3 → sem alteração
+          +.                                                             
+      193 +    - Erro comum com `attemptsMade = attempts` → `failed`.    
+      194 +    - URL pré-assinada removida do motivo gravado.            
+      195 +    - Evento sem `job` → ignorado.                            
+      196 +    - Falha ao gravar `failed` → logada, sem lançar.          
+      197 +  - `failure-reason.util.spec.ts`: 3 unit.                    
+      198 +  - `video.processor.integration-spec.ts`: 3 novos com Redis, 
+          +Postgres, MinIO e FFmpeg reais.                               
+      199 +    - Evento de falha tardio para um vídeo `ready` não altera 
+          +a linha.                                                      
+      200 +    - Fila real com `Worker` do processor no processo do teste
+          +, prefixo `test-video-processor-*`, `QUEUE_BACKOFF_DELAY_MS=10
+          +0` e `job.waitUntilFinished(queueEvents)`:                    
+      201 +      - objeto inválido → `failed` com `attemptsMade = 1`;    
+      202 +      - objeto ausente → `attemptsMade = 3`, com `processing`/
+          +`failure_reason = null` no início de cada tentativa, e depois 
+          +`failed`.                                                     
+      203 
+      204 +  Regressão: 274 unit/integration (39 suítes) e 76 e2e (7 suít
+          +es) passando. `tsc --noEmit` limpo. `npm run lint` com 0 erros
+          + e os 23 warnings pré-existentes.                             
+      205 +- **Observations:**                                           
+      206 +  - **`attemptsMade` no evento `failed`, conferido no código d
+          +o `bullmq@6.7.8`.**                                           
+      207 +    - O `Worker.handleFailed` emite `failed` em toda tentativa
+          + que falha, inclusive nas que serão retentadas.               
+      208 +    - O evento sai sempre depois de `job.moveToFailed()`, que 
+          +já incrementou `attemptsMade`.                                
+      209 +    - Por isso `attemptsMade >= opts.attempts` identifica a fa
+          +lha final, como diz o plano. O `+ 1` que aparece na doc é de d
+          +entro do `shouldRetryJob`, antes do incremento.               
+      210 +    - `opts.attempts` ausente é tratado como 1.               
+      211 +    - O `job` pode vir `undefined` (stalled removido por `remo
+          +veOnFail`), e então o evento é ignorado.                      
+      212 +  - **`failure_reason` sem URL pré-assinada (correção além do 
+          +plano).**                                                     
+      213 +    - O plano grava `failure_reason = err.message`. Mas a mens
+          +agem do `MediaService` inclui o stderr do `ffprobe`, que repet
+          +e a URL de entrada: host interno, bucket e `X-Amz-Signature` v
+          +álida por 15 min.                                             
+      214 +    - Como o `failure_reason` é devolvido ao dono no `GET /vid
+          +eos/:id` (SI-03.12), `toFailureReason()` (`src/worker/failure-
+          +reason.util.ts`) troca toda URL por `<source>` antes de gravar
+          + e de logar. Exemplo: `ffprobe failed: <source>: Server return
+          +ed 404 Not Found`.                                            
+      215 +    - Os logs do próprio `ffprobe`/`MediaService` fora do hand
+          +ler não foram alterados (fora do escopo).                     
+      216 +  - **Log estruturado.** O `Logger` recebe um objeto com `vide
+          +oId`, `attemptsMade`, `attempts`, `final` e `reason`.         
+      217 +    - Tentativa intermediária → `warn`.                       
+      218 +    - Falha final → `error`.                                  
+      219 +    - Falha ao gravar `failed` → `error` com `updateError`, se
+          +m relançar. É handler de evento de background, e relançar derr
+          +ubaria o worker.                                              
+      220 +  - **Atualização condicional** (ação 2): `update({ id, status
+          +: processing }, { status: failed, failure_reason })`. O teste 
+          +"evento tardio" confirma que um vídeo `ready` não muda.       
+      221 +  - **Espera pelo `onFailed` no teste.** O `waitUntilFinished`
+          + resolve pelo `QueueEvents`, que pode chegar antes de o `onFai
+          +led` do worker gravar no banco. Os testes de fila esperam o st
+          +atus no banco por até 5s (polling de 50ms).                   
+      222 +  - **Captura do estado entre tentativas.** É feita com um `sp
+          +yOn` no `presignInternalGet` do `StorageService` do worker, a 
+          +primeira chamada de cada tentativa, que delega à implementação
+          + real.                                                        
+      223 +                                                              
+      224  ### SI-03.12 — Endpoint GET /videos/:id (status e detalhe do p
+           róprio vídeo)
+      225  - **Status:** pending
+      226  - **Tests:** —
+
+● Bash(sed -i 's/^\*\*SIs:\*\* 10\/14 completed/**SIs:** 11\/14 completed/'
+      docs/phases/phase-03-videos/progress.md && grep -n "^\*\*SIs"
+      docs/phases/phase-03-videos/p…)
+  ⎿  4:**SIs:** 11/14 completed
+     feature/phase-03-videos
+     M  docs/phases/phase-03-videos/progress.md
+     … +6 lines (ctrl+o to expand)
+  ⎿  Updated docs/phases/phase-03-videos/progress.md +1 -1
+      1  # phase-03-videos — Progress
+      2 
+      3  **Status:** in_progress
+      4 -**SIs:** 10/14 completed                                        
+      4 +**SIs:** 11/14 completed                                        
+      5 
+      6  ### SI-03.1 — Infra: Redis, MinIO, FFmpeg e bibliotecas da fase
+      7  - **Status:** completed
+
+● O SI-03.11 está pronto. Um vídeo que não é legível termina failed na primeira
+  tentativa, e uma falha transitória só vira failed depois da terceira. Está no
+  commit 956969a na feature/phase-03-videos, sem push.
+
+  Testes do SI: 12 novos, 27 passando em src/worker.
+  - Unitários de onFailed (6):
+    - UnrecoverableError na 1ª tentativa marca failed;
+    - erro comum com tentativas sobrando não altera o vídeo;
+    - erro comum na 3ª de 3 tentativas marca failed;
+    - a URL pré-assinada sai do motivo gravado;
+    - evento sem job é ignorado;
+    - erro ao gravar failed é logado e não derruba o worker.
+  - failure-reason.util.spec.ts (3): a função que remove as URLs.
+  - Integração (3), com Redis, Postgres, MinIO e FFmpeg reais e um worker BullMQ
+    de verdade no teste:
+    - um evento de falha que chega depois de o vídeo estar ready não muda nada;
+    - um objeto que não é vídeo termina failed após exatamente 1 tentativa;
+    - um objeto ausente leva 3 tentativas, com o vídeo em processing e
+      failure_reason vazio no início de cada uma, e termina failed.
+
+  Verificação completa (no container, com start:dev parado):
+  - npm test -- --runInBand: 274 testes passando em 39 suítes.
+  - npm run test:e2e -- --runInBand: 76 passando em 7 suítes.
+  - npx tsc --noEmit: sem erros.
+  - npm run lint: 0 erros e os mesmos 23 warnings de antes.
+
+  Uma mudança além do plano, por segurança: o plano grava failure_reason = 
+  err.message. Mas o ffprobe repete a URL de entrada na mensagem de erro, então
+  o motivo levava a URL pré-assinada completa: host interno, bucket e uma
+  assinatura válida por 15 minutos. Como esse campo vai aparecer para o dono no
+  GET /videos/:id (SI-03.12), toda URL é trocada por <source> antes de gravar e
+  de logar. O motivo fica, por exemplo, ffprobe failed: <source>: Server 
+  returned 404 Not Found. Os logs internos do MediaService continuam com a URL;
+  não mexi neles por serem do SI-03.9.
+
+  Outras observações (registradas no progress.md):
+  - Conferi no código instalado do BullMQ: o evento de falha dispara em toda
+    tentativa, e o contador de tentativas já vem incrementado. Por isso a regra
+    do plano (attemptsMade >= attempts) identifica corretamente a falha final.
+  - Corrigi uma nota do SI-03.9: um objeto ausente responde 404, não 403.
+
+  Seguir para SI-03.12?
+
+✻ Cooked for 6m 5s · done 9:34 PM
+
+※ recap: Estamos implementando a Fase 03 (vídeos) SI por SI; o SI-03.11 está concluído e commitado (`956969a`), com todos os testes passando. Próximo passo: seu ok para começar o SI-03.12 (`GET /videos/:id`).
+
+❯ /context 
+  ⎿  Context usage
+     ⛀ ⛁ ⛁ ⛁ ⛁ ⛀ ⛀ ⛀ ⛀ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁   Opus 5.5
+     ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁   claude-opus-5-5
+     ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛶ ⛶ ⛶ ⛶   268.8k/1m tokens (27%)
+     ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ 
+     ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶   Estimated usage by category
+     ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶   ⛁ System prompt: 3k tokens (0.3%)
+     ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶   ⛁ System tools: 20.3k tokens (2%)
+     ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶   ⛁ MCP tools: 2k tokens (0.2%)
+     ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶   ⛁ MCP server instructions: 945 tokens (0.1%)
+     ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛝ ⛝ ⛝ ⛝ ⛝ ⛝ ⛝   ⛁ Custom agents: 1.1k tokens (0.1%)
+                                               ⛁ Memory files: 2k tokens (0.2%)
+                                               ⛁ Skills: 7.5k tokens (0.7%)
+                                               ⛁ Messages: 232k tokens (23%)
+                                               ⛶ Free space: 698.2k tokens (70%)
+                                               ⛝ Autocompact buffer: 33k tokens (3%)
+
+     Auto-compact window:  1m tokens
+
+     MCP tools · /mcp (loaded on-demand)
+     └ 13 tools · 2k tokens
+
+     Custom agents · .claude/agents/
+     └ 6 agents · 1.1k tokens
+
+     Memory files · /memory
+     └ 2 files · 2k tokens
+
+     Skills · /skills
+     └ 42 skills · 7.5k tokens
+
+     /context all to expand
+
+❯ ok, siga para o SI-03.12.                                                     
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Branch confere e a árvore está limpa. Leio o contrato da rota no plano, a
+  matriz de autorização e os padrões do controller/service:
+  Ran 5 shell commands (ctrl+o to expand)
+
+● Escrevendo a constante, o DTO de resposta e o método do service. O
+  findOwnedDraft passa a reaproveitar o findOwned, sem mudar o comportamento:
+
+● Bash(cat >> src/videos/videos.constants.ts <<'EOF'…)
+  ⎿  1:import { randomUUID } from 'node:crypto';
+     2:import { extname } from 'node:path';
+     3:import { Injectable } from '@nestjs/common';
+     … +17 lines (ctrl+o to expand)
+  ⎿  Updated nestjs-project/src/videos/videos.constants.ts +6
+      34    NAME: 'process-video',
+      35    ATTEMPTS: 3,
+      36  } as const;
+      37 +                                                               
+      38 +/** Owner detail (`GET /videos/:id`). */                       
+      39 +export const VIDEO_DETAIL = {                                  
+      40 +  /** Lifetime of the presigned thumbnail GET URL, in seconds (
+         +phase-03-videos/TD-02). */                                     
+      41 +  THUMBNAIL_URL_EXPIRES_IN_S: 3600,                            
+      42 +} as const;                                                    
+
+● Write(nestjs-project/src/videos/dto/video-response.dto.ts)
+  ⎿  Wrote 87 lines to nestjs-project/src/videos/dto/video-response.dto.ts
+       1 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagge
+         r';
+       2 import type { Video } from '../entities/video.entity';
+       3 import { VideoStatus } from '../videos.types';
+       4 
+       5 /** Metadata extracted by ffprobe; keys are the internal ones, v
+         erbatim. */
+       6 export class VideoMetadataDto {
+       7   @ApiProperty({ example: 1920 })
+       8   width: number;
+     … +79 lines (ctrl+o to expand)
+  ⎿  Loaded ../.claude/rules/nestjs-dtos.md
+
+● O DTO segue a convenção de response, com campos marcados como nullable onde
+  necessário, e mantenho todos como obrigatórios. Agora vou para o service. 
+  · summary
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Bash(python3 - <<'EOF'
+      p='src/videos/videos.service.ts'…)
+  ⎿      @Param('id', ParseUUIDPipe) id: string,
+       ): Promise<VideoResponseDto> {
+         return this.videosService.getOwnedDetail(user.sub, id);
+     … +5 lines (ctrl+o to expand)
+  ⎿  Updated nestjs-project/src/videos/videos.controller.ts +32
+      12  import {
+      13    ApiBearerAuth,
+      14    ApiBody,
+      15 +  ApiOkResponse,                                               
+      16    ApiOperation,
+      17    ApiParam,
+      18    ApiResponse,
+     ...
+      29  import { PresignPartsResponseDto } from './dto/presign-parts-re
+          sponse.dto';
+      30  import { PresignPartsDto } from './dto/presign-parts.dto';
+      31  import { UploadedPartsResponseDto } from './dto/uploaded-parts-
+          response.dto';
+      32 +import { VideoResponseDto } from './dto/video-response.dto';   
+      33  import { VideosService } from './videos.service';
+      34 
+      35  @ApiTags('videos')
+     ...
+      240    ): Promise<void> {
+      241      await this.videosService.abortUpload(user.sub, id);
+      242    }
+      243 +                                                              
+      244 +  @Get(':id')                                                 
+      245 +  @ApiOperation({                                             
+      246 +    summary: 'Get an owned video',                            
+      247 +    description:                                              
+      248 +      'Returns the status (draft, processing, ready or failed)
+          + and the details of a video owned by the caller: extracted dur
+          +ation and metadata, failure reason and a presigned thumbnail U
+          +RL (valid for 3600s).',                                       
+      249 +  })                                                          
+      250 +  @ApiParam({ name: 'id', format: 'uuid', description: 'Video 
+          +id' })                                                        
+      251 +  @ApiOkResponse({ description: 'Video detail', type: VideoRes
+          +ponseDto })                                                   
+      252 +  @ApiResponse({                                              
+      253 +    status: 400,                                              
+      254 +    description: 'Invalid video id (VALIDATION_ERROR)',       
+      255 +    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },        
+      256 +  })                                                          
+      257 +  @ApiResponse({                                              
+      258 +    status: 401,                                              
+      259 +    description: 'Missing or invalid access token',           
+      260 +    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },        
+      261 +  })                                                          
+      262 +  @ApiResponse({                                              
+      263 +    status: 404,                                              
+      264 +    description: 'Video not found or not owned by the caller (
+          +VIDEO_NOT_FOUND)',                                            
+      265 +    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },        
+     … +8 lines (ctrl+o to expand)
+  ⎿  Updated nestjs-project/src/videos/videos.service.ts +23 -3
+      15  import type { InitiateUploadResponseDto } from './dto/initiate-
+          upload-response.dto';
+      16  import type { PresignPartsResponseDto } from './dto/presign-par
+          ts-response.dto';
+      17  import type { UploadedPartsResponseDto } from './dto/uploaded-p
+          arts-response.dto';
+      18 +import { VideoResponseDto } from './dto/video-response.dto';   
+      19  import { Video } from './entities/video.entity';
+      20  import { generatePublicId } from './public-id.util';
+      21  import { VideoProcessingQueue } from './video-processing.queue'
+          ;
+     ...
+      31  } from './video.exceptions';
+      32  import {
+      33    PUBLIC_ID_MAX_ATTEMPTS,
+      34 +  VIDEO_DETAIL,                                                
+      35    VIDEO_FORMAT_ALLOWLIST,
+      36    VIDEO_UPLOAD_LIMITS,
+      37    videoStorageKeys,
+     ...
+      132    }
+      133 
+      134    /**
+      133 -   * Loads a draft owned by the caller's channel. Missing or f
+          -oreign videos are                                             
+      134 -   * reported as not found, without revealing that they exist.
+      135 +   * Loads a video of the caller's channel, in any status. Mis
+          +sing or foreign                                               
+      136 +   * videos are reported as not found, without revealing that 
+          +they exist                                                    
+      137 +   * (phase-03-videos/TD-08).                                 
+      138     */
+      136 -  async findOwnedDraft(userId: string, id: string): Promise<Vi
+          -deo> {                                                        
+      139 +  async findOwned(userId: string, id: string): Promise<Video> 
+          +{                                                             
+      140      const channel = await this.channelsService.findByUserId(us
+           erId);
+      141      const video = channel
+      142        ? await this.videoRepository.findOne({
+     ...
+      144          })
+      145        : null;
+      146      if (!video) throw new VideoNotFoundException();
+      147 +    return video;                                             
+      148 +  }                                                           
+      149 +                                                              
+      150 +  /** Owner detail: status, extracted metadata and a presigned
+          + thumbnail URL. */                                            
+      151 +  async getOwnedDetail(userId: string, id: string): Promise<Vi
+          +deoResponseDto> {                                             
+      152 +    const video = await this.findOwned(userId, id);           
+      153 +    const thumbnailUrl = video.thumbnail_key                  
+      154 +      ? await this.storageService.presignGet(video.thumbnail_k
+          +ey, {                                                         
+      155 +          expiresIn: VIDEO_DETAIL.THUMBNAIL_URL_EXPIRES_IN_S, 
+     … +11 lines (ctrl+o to expand)
+
+● A rota está no lugar. Agora o teste de integração do findOwned. Vejo como o
+  spec já cria um segundo canal:
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+● Bash(python3 - <<'EOF'
+      p='src/videos/videos.service.integration-spec.ts'…)
+  ⎿  import { randomUUID } from 'node:crypto';
+     import { getQueueToken } from '@nestjs/bullmq';
+     import { ConfigModule } from '@nestjs/config';
+  ⎿  Updated nestjs-project/src/videos/videos.service.integration-spec.ts
+     +60
+      1 +import { randomUUID } from 'node:crypto';                       
+      2  import { getQueueToken } from '@nestjs/bullmq';
+      3  import { ConfigModule } from '@nestjs/config';
+      4  import { Test, type TestingModule } from '@nestjs/testing';
+     ...
+      24  import { useTestQueuePrefix } from '../test/test-queue';
+      25  import { User } from '../users/entities/user.entity';
+      26  import { Video } from './entities/video.entity';
+      27 +import { VideoNotFoundException } from './video.exceptions';   
+      28  import { VideoProcessingQueue } from './video-processing.queue'
+          ;
+      29  import { VideosService } from './videos.service';
+      30  import { VideoStatus } from './videos.types';
+     ...
+      227        ).rejects.toMatchObject({ name: 'NoSuchUpload' });
+      228      });
+      229    });
+      230 +                                                              
+      231 +  describe('findOwned', () => {                               
+      232 +    it.each([                                                 
+      233 +      VideoStatus.DRAFT,                                      
+      234 +      VideoStatus.PROCESSING,                                 
+      235 +      VideoStatus.READY,                                      
+      236 +      VideoStatus.FAILED,                                     
+      237 +    ])('should return a video of the own channel in status %s'
+          +, async (status) => {                                         
+      238 +      const draft = await videosService.initiateUpload(channel
+          +.user_id, {                                                   
+      239 +        file_name: 'clip.mp4',                                
+      240 +        content_type: 'video/mp4',                            
+      241 +        size_bytes: 1024,                                     
+      242 +      });                                                     
+      243 +      const row = await dataSource                            
+      244 +        .getRepository(Video)                                 
+      245 +        .findOneByOrFail({ id: draft.id });                   
+      246 +      openUploads.push({ key: row.storage_key, uploadId: row.u
+          +pload_id! });                                                 
+      247 +      await dataSource.getRepository(Video).update({ id: draft
+          +.id }, { status });                                           
+      248 +                                                              
+      249 +      const video = await videosService.findOwned(channel.user
+          +_id, draft.id);                                               
+      250 +                                                              
+      251 +      expect(video).toMatchObject({                           
+      252 +        id: draft.id,                                         
+      253 +        channel_id: channel.id,                               
+      254 +        status,                                               
+      255 +      });                                                     
+     … +33 lines (ctrl+o to expand)
+
+● Agora escrevo o e2e a partir do spec, com um describe e um it por cenário, e
+  adiciono ao MediaFixtures um método que gera um JPEG válido com o FFmpeg para
+  o cenário ready. · summary
+
+● Update(nestjs-project/src/test/media-fixtures.ts)
+  ⎿  Added 18 lines
+      53      return output;
+      54    }
+      55 
+      56 +  /** A small JPEG (one `testsrc` frame), e.g. a thumbnail stor
+         +ed directly. */                                                
+      57 +  async jpeg(name: string): Promise<string> {                  
+      58 +    const output = join(this.dir, name);                       
+      59 +    await execFileAsync('ffmpeg', [                            
+      60 +      '-v',                                                    
+      61 +      'error',                                                 
+      62 +      '-f',                                                    
+      63 +      'lavfi',                                                 
+      64 +      '-i',                                                    
+      65 +      'testsrc=size=160x120',                                  
+      66 +      '-frames:v',                                             
+      67 +      '1',                                                     
+      68 +      '-y',                                                    
+      69 +      output,                                                  
+      70 +    ]);                                                        
+      71 +    return output;                                             
+      72 +  }                                                            
+      73 +                                                               
+      74    /** A plain text file with a video extension (not decodable a
+          s media). */
+      75    async fakeVideo(name: string): Promise<string> {
+      76      const output = join(this.dir, name);
+
+● Write(nestjs-project/test/videos-get-owned.e2e-spec.ts)
+  ⎿  Wrote 204 lines to nestjs-project/test/videos-get-owned.e2e-spec.ts
+       1 import { randomUUID } from 'node:crypto';
+       2 import { readFile } from 'node:fs/promises';
+       3 import { INestApplication } from '@nestjs/common';
+       4 import { ThrottlerStorage, ThrottlerStorageService } from '@nest
+         js/throttler';
+       5 import request from 'supertest';
+       6 import { App } from 'supertest/types';
+       7 import { DataSource, IsNull, Not } from 'typeorm';
+       8 import { StorageService } from '../src/storage/storage.service';
+       9 import { cleanAllTables } from '../src/test/create-test-data-sou
+     … +196 lines (~6 KB) (ctrl+o to expand)
+
+● Rodando as suítes do SI: o integration do service e o e2e novo.
+
+● Bash(docker compose exec -T nestjs-api npx prettier --write src/videos
+      test/videos-get-owned.e2e-spec.ts src/test/media-fixtures.ts >/dev/null;
+      docker compose exec -…)
+  ⎿  Tests:       10 passed, 10 total
+     Tests:       6 passed, 6 total
+  ⎿  Updated nestjs-project/src/videos/dto/video-response.dto.ts +6 -2
+      13    @ApiProperty({ example: 'h264' })
+      14    videoCodec: string;
+      15 
+      16 -  @ApiPropertyOptional({ example: 'aac', description: 'Absent w
+         -hen the video has no audio track' })                           
+      16 +  @ApiPropertyOptional({                                       
+      17 +    example: 'aac',                                            
+      18 +    description: 'Absent when the video has no audio track',   
+      19 +  })                                                           
+      20    audioCodec?: string;
+      21 
+      22    @ApiProperty({ example: 4500000, description: 'Bits per secon
+          d' })
+     ...
+      58    @ApiProperty({
+      59      type: String,
+      60      nullable: true,
+      58 -    description: 'Presigned GET URL of the thumbnail (valid for
+         - 3600s); null until processed',                                
+      61 +    description:                                               
+      62 +      'Presigned GET URL of the thumbnail (valid for 3600s); nu
+         +ll until processed',                                           
+      63    })
+      64    thumbnail_url: string | null;
+      65 
+  ⎿  Updated nestjs-project/src/videos/videos.service.integration-spec.ts
+     +23 -18
+      234        VideoStatus.PROCESSING,
+      235        VideoStatus.READY,
+      236        VideoStatus.FAILED,
+      237 -    ])('should return a video of the own channel in status %s'
+          -, async (status) => {                                         
+      238 -      const draft = await videosService.initiateUpload(channel
+          -.user_id, {                                                   
+      239 -        file_name: 'clip.mp4',                                
+      240 -        content_type: 'video/mp4',                            
+      241 -        size_bytes: 1024,                                     
+      242 -      });                                                     
+      243 -      const row = await dataSource                            
+      244 -        .getRepository(Video)                                 
+      245 -        .findOneByOrFail({ id: draft.id });                   
+      246 -      openUploads.push({ key: row.storage_key, uploadId: row.u
+          -pload_id! });                                                 
+      247 -      await dataSource.getRepository(Video).update({ id: draft
+          -.id }, { status });                                           
+      237 +    ])(                                                       
+      238 +      'should return a video of the own channel in status %s',
+      239 +      async (status) => {                                     
+      240 +        const draft = await videosService.initiateUpload(chann
+          +el.user_id, {                                                 
+      241 +          file_name: 'clip.mp4',                              
+      242 +          content_type: 'video/mp4',                          
+      243 +          size_bytes: 1024,                                   
+      244 +        });                                                   
+      245 +        const row = await dataSource                          
+      246 +          .getRepository(Video)                               
+      247 +          .findOneByOrFail({ id: draft.id });                 
+      248 +        openUploads.push({ key: row.storage_key, uploadId: row
+          +.upload_id! });                                               
+      249 +        await dataSource                                      
+      250 +          .getRepository(Video)                               
+      251 +          .update({ id: draft.id }, { status });              
+      252 
+      249 -      const video = await videosService.findOwned(channel.user
+          -_id, draft.id);                                               
+      253 +        const video = await videosService.findOwned(channel.us
+          +er_id, draft.id);                                             
+      254 
+      251 -      expect(video).toMatchObject({                           
+      252 -        id: draft.id,                                         
+      253 -        channel_id: channel.id,                               
+      254 -        status,                                               
+      255 -      });                                                     
+      256 -    });                                                       
+      255 +        expect(video).toMatchObject({                         
+     … +9 lines (ctrl+o to expand)
+  ⎿  Updated nestjs-project/test/videos-get-owned.e2e-spec.ts +5 -1
+      68      const created = await request(app.getHttpServer())
+      69        .post('/videos')
+      70        .set('Authorization', `Bearer ${owner.accessToken}`)
+      71 -      .send({ file_name: 'clip.mp4', content_type: 'video/mp4',
+         - size_bytes: 45643 })                                          
+      71 +      .send({                                                  
+      72 +        file_name: 'clip.mp4',                                 
+      73 +        content_type: 'video/mp4',                             
+      74 +        size_bytes: 45643,                                     
+      75 +      })                                                       
+      76        .expect(201);
+      77      videoId = (created.body as { id: string }).id;
+      78    }, 30_000);
+  ⎿  (timeout 6m 40s)
+
+● Os 10 testes de integração do service (5 novos) e os 6 do e2e passam todos.
+  Agora rodo tsc, lint e a regressão completa, de olho no
+  openapi-export.integration-spec.ts, que pode comparar com o openapi.json
+  commitado, ainda não regenerado até o SI-03.13. · summary
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Suítes verdes: 280 unit/integration e 82 e2e. O openapi-export não reclamou da
+  rota nova. Sobraram 2 erros de lint por causa das variáveis descartadas na
+  desestruturação. Troco por um helper:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Bash(python3 - <<'EOF'
+      p='test/videos-get-owned.e2e-spec.ts'…)
+  ⎿  ✖ 23 problems (0 errors, 23 warnings)
+     tsc=0
+     Tests:       6 passed, 6 total
+  ⎿  Updated nestjs-project/test/videos-get-owned.e2e-spec.ts +8 -9
+      30  };
+      31  const ISO_8601 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z
+          $/;
+      32 
+      33 +const withoutMessage = (body: unknown): Record<string, unknown>
+         + => {                                                          
+      34 +  const copy = { ...(body as Record<string, unknown>) };       
+      35 +  delete copy.message;                                         
+      36 +  return copy;                                                 
+      37 +};                                                             
+      38 +                                                               
+      39  describe('videos-get-owned', () => {
+      40    let app: INestApplication<App>;
+      41    let dataSource: DataSource;
+     ...
+      188      expect(foreign.status).toBe(404);
+      189      expect(foreign.body).toMatchObject({ error: 'VIDEO_NOT_FOU
+           ND' });
+      190      expect(missing.status).toBe(404);
+      185 -    const { message: _foreignMessage, ...foreignRest } = forei
+          -gn.body as Record<                                            
+      186 -      string,                                                 
+      187 -      unknown                                                 
+      188 -    >;                                                        
+      189 -    const { message: _missingMessage, ...missingRest } = missi
+          -ng.body as Record<                                            
+      190 -      string,                                                 
+      191 -      unknown                                                 
+      192 -    >;                                                        
+      193 -    expect(missingRest).toEqual(foreignRest);                 
+      191 +    // Same envelope for "not yours" and "does not exist" (mes
+          +sage may vary).                                               
+      192 +    expect(withoutMessage(missing.body)).toEqual(withoutMessag
+          +e(foreign.body));                                             
+      193    });
+      194 
+      195    it('sem-token-recebe-401', async () => {
+  ⎿  (timeout 5m)
+
+● Lint com 0 erros e os 23 warnings de antes, tsc limpo, e2e passando. Atualizo
+  o progress.md e faço o commit:
+
+  Read 1 file, ran 1 shell command (ctrl+o to expand)
+
+● Update(docs/phases/phase-03-videos/progress.md)
+  ⎿  Added 23 lines, removed 3 lines
+      222    - **Captura do estado entre tentativas.** É feita com um `sp
+           yOn` no `presignInternalGet` do `StorageService` do worker, a
+           primeira chamada de cada tentativa, que delega à implementação
+            real.
+      223 
+      224  ### SI-03.12 — Endpoint GET /videos/:id (status e detalhe do p
+           róprio vídeo)
+      225 -- **Status:** pending                                         
+      226 -- **Tests:** —                                                
+      227 -- **Observations:** none                                      
+      225 +- **Status:** completed                                       
+      226 +- **Tests:** 11 novos passando:                               
+      227 +  - `videos.service.integration-spec.ts`: 5 novos de `findOwne
+          +d`.                                                           
+      228 +    - Vídeo do próprio canal em `draft`, `processing`, `ready`
+          + e `failed` (`it.each`).                                      
+      229 +    - Vídeo de outro canal → `VideoNotFoundException`.        
+      230 +    - Vídeo inexistente → `VideoNotFoundException`.           
+      231 +  - `test/videos-get-owned.e2e-spec.ts`: 6 testes, os 6 cenári
+          +os de `specs/videos-get-owned.plan.md`.                       
+      232 +    - `rascunho-sem-metadados`.                               
+      233 +    - `video-ready-com-metadados-e-thumbnail`, com GET real na
+          + `thumbnail_url` via `requestPresigned` → JPEG `FF D8`.       
+      234 +    - `video-failed-com-motivo`.                              
+      235 +    - `outro-usuario-recebe-404`, com envelope idêntico ao de 
+          +id inexistente.                                               
+      236 +    - `sem-token-recebe-401`.                                 
+      237 +    - `id-nao-uuid-recebe-400`.                               
+      238 
+      239 +  Regressão: 280 unit/integration (39 suítes) e 82 e2e (8 suít
+          +es) passando. `tsc --noEmit` limpo. `npm run lint` com 0 erros
+          + e os 23 warnings pré-existentes.                             
+      240 +- **Observations:**                                           
+      241 +  - **Specs "STALE" no preflight eram falso positivo.** O `pha
+          +se-03-videos.md` só mudou, desde `30a33bd` (`docs: phase 03 te
+          +st specs`), na correção do `ioredis` do SI-03.1, que não toca 
+          +este SI. O spec foi usado como está.                          
+      242 +  - **`findOwned` extraído e reaproveitado.** O `findOwnedDraf
+          +t` passou a chamar o novo `findOwned` e só acrescenta a checag
+          +em de `draft`/`upload_id`. O comportamento não mudou, e as suí
+          +tes dos SIs 03.6–03.8 continuam verdes.                       
+      243 +  - **Mapeamento no DTO, presign no service.** `getOwnedDetail
+          +` chama `findOwned`, assina a `thumbnail_url` com o cliente pú
+          +blico (`presignGet`, `VIDEO_DETAIL.THUMBNAIL_URL_EXPIRES_IN_S 
+          += 3600`, em `videos.constants.ts`) só quando há `thumbnail_key
+          +`, e delega o shape a `VideoResponseDto.from(video, thumbnailU
+          +rl)`. O DTO não depende de serviços.                          
+      244 +  - **OpenAPI.** `VideoMetadataDto` foi criado como schema ani
+          +nhado de `metadata`, com `audioCodec` opcional. Os campos anul
+          +áveis são `nullable` e obrigatórios, porque o contrato sempre 
+          +os devolve, mesmo com `null`. A rota tem `@ApiOkResponse(Video
+          +ResponseDto)` e 400/401/404 com `ApiErrorEnvelope`. O `openapi
+          +.json` commitado não foi regenerado: o plano faz isso no SI-03
+          +.13.                                                          
+      245 +  - **Arquivos além dos listados no plano:**                  
+      246 +    - `MediaFixtures.jpeg()` em `src/test/media-fixtures.ts`, 
+          +que gera o JPEG do cenário `ready` sem binário commitado.     
+      247 +    - `VIDEO_DETAIL` em `videos.constants.ts`.                
+      248 +                                                              
+      249  ### SI-03.13 — Endpoints públicos de streaming e download (302
+            pré-assinado)
+      250  - **Status:** pending
+      251  - **Tests:** —
+
+● Bash(sed -i 's/^\*\*SIs:\*\* 11\/14 completed/**SIs:** 12\/14 completed/'
+      docs/phases/phase-03-videos/progress.md && grep -n "^\*\*SIs"
+      docs/phases/phase-03-videos/p…)
+  ⎿  4:**SIs:** 12/14 completed
+     feature/phase-03-videos
+     M  docs/phases/phase-03-videos/progress.md
+     … +9 lines (ctrl+o to expand)
+  ⎿  Updated docs/phases/phase-03-videos/progress.md +1 -1
+      1  # phase-03-videos — Progress
+      2 
+      3  **Status:** in_progress
+      4 -**SIs:** 11/14 completed                                        
+      4 +**SIs:** 12/14 completed                                        
+      5 
+      6  ### SI-03.1 — Infra: Redis, MinIO, FFmpeg e bibliotecas da fase
+      7  - **Status:** completed
+
+● O SI-03.12 está pronto: o dono agora consulta o próprio vídeo em qualquer
+  status pelo GET /videos/:id. Está no commit 43128a4 na
+  feature/phase-03-videos, sem push.
+
+  Testes do SI: 11 novos passando.
+  - videos.service.integration-spec.ts (5 novos): o vídeo do próprio canal é
+    encontrado em draft, processing, ready e failed. Vídeo de outro canal ou
+    inexistente lança VideoNotFoundException.
+  - test/videos-get-owned.e2e-spec.ts (6): os 6 cenários do spec.
+    - rascunho com metadados e thumbnail nulos;
+    - vídeo ready com metadados, e a thumbnail_url baixada de verdade devolve um
+      JPEG;
+    - vídeo failed com o motivo;
+    - outro usuário recebe 404, com a mesma resposta de um vídeo inexistente;
+    - sem token recebe 401;
+    - id que não é UUID recebe 400.
+
+  Verificação completa (no container, com start:dev parado):
+  - npm test -- --runInBand: 280 testes passando em 39 suítes.
+  - npm run test:e2e -- --runInBand: 82 passando em 8 suítes.
+  - npx tsc --noEmit: sem erros.
+  - npm run lint: 0 erros e os mesmos 23 warnings de antes.
+
+  Decisões que tomei:
+  - Busca do vídeo do dono: o novo findOwned faz essa busca em qualquer status,
+    e o findOwnedDraft passou a usá-lo, só acrescentando a checagem de rascunho.
+    O comportamento das rotas de upload não mudou, e os testes delas continuam
+    passando.
+  - Montagem da resposta: o service gera a URL da thumbnail (válida por 1h) só
+    quando o vídeo tem thumbnail, e o DTO apenas monta o corpo.
+  - OpenAPI: criei um schema próprio para metadata, com audioCodec opcional. O
+    openapi.json commitado não foi regenerado, porque o plano faz isso no
+    SI-03.13.
+  - Arquivos além da lista do plano: um método jpeg() no MediaFixtures, para o
+    cenário ready sem commitar imagem, e a constante VIDEO_DETAIL.
+
+  Seguir para SI-03.13?
+
+✻ Baked for 5m 25s · done 9:46 PM
+
+※ recap: Estamos implementando a Fase 03 de vídeos, já com 12 de 14 SIs concluídos; o SI-03.12 (GET /videos/:id) está pronto e commitado. O próximo passo é o SI-03.13, os endpoints públicos de streaming e download, e espero seu ok para começar.

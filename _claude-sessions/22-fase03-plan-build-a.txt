@@ -1,0 +1,1347 @@
+ ▐▛███▛█   Claude Code v2.1.329
+▝▜██████▀  Opus 5.5 · Claude Pro
+ ▝▝   ▝▝   ~/mbaengsoft/mba-ia-streamTube-greenfield
+
+
+❯ /clear                                                                        
+
+❯ /plan-build phase-03-videos Diretório da fase: docs/phases/phase-03-videos/,  
+artefato docs/phases/phase-03-videos/phase-03-videos.md. Responda em português. 
+
+  Read 2 files, listed 2 directories, ran 2 shell commands · 2 failed (ctrl+o to expand)
+
+● Os gates de preflight passaram, e agora estou lendo os templates e o estado
+  atual do código para escrever as Technical Specifications da Fase A. · summary
+
+  Searched for 1 pattern, read 1 file, ran 4 shell commands (ctrl+o to expand)
+
+● Ainda na Fase A: já mapeei o código existente; estou fechando a convenção de
+  nomes do JSON antes de escrever o scaffold.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Write(docs/phases/phase-03-videos/phase-03-videos.md)
+  ⎿  Wrote 40 lines to docs/phases/phase-03-videos/phase-03-videos.md
+       1 ---
+       2 kind: phase
+       3 name: phase-03-videos
+       4 test_specs_aware: true
+       5 sources_mtime:
+       6   docs/phases/phase-03-videos/context.md: "2026-11-23T16:12:29-0
+         3:00"
+       7   docs/phases/phase-03-videos/library-refs.md: "2026-11-23T16:12
+         :29-03:00"
+       8   docs/decisions/technical-decisions-phase-03-videos.md: "2026-1
+     … +33 lines (ctrl+o to expand)
+
+● Scaffold escrito. Agora a subseção Data Model (entidade Video).
+
+● Update(docs/phases/phase-03-videos/phase-03-videos.md)
+  ⎿  Added 30 lines, removed 1 line
+      25 
+      26  ## Technical Specifications
+      27 
+      28 -<!-- Tech Specs subsections will be appended below in Phase A -
+         -->                                                             
+      28 +### Data Model                                                 
+      29 
+      30 +#### Video                                                     
+      31 +                                                               
+      32 +Tabela `videos` (nova). Colunas em snake_case, seguindo a conve
+         +nção das entidades `User`/`Channel` da Fase 02.                
+      33 +                                                               
+      34 +| Field | Type | Constraints |                                 
+      35 +|-------|------|-------------|                                 
+      36 +| id | uuid | PK, generated |                                  
+      37 +| public_id | varchar(16) | unique, not null — ID aleatório cur
+         +to gerado com `node:crypto` (base64url, 8 bytes → 11 caracteres
+         +) na criação do rascunho; colisão em UNIQUE → nova tentativa (p
+         +er `phase-03-videos/TD-07`) |                                  
+      38 +| channel_id | uuid | not null, FK → `channels.id` — canal do u
+         +suário autenticado que iniciou o upload (dono) |               
+      39 +| status | enum `video_status` (`draft`, `processing`, `ready`,
+         + `failed`) | not null, default `draft` (per `phase-03-videos/TD
+         +-09`) |                                                        
+      40 +| original_filename | varchar(255) | not null — nome do arquivo
+         + declarado no início do upload |                               
+      41 +| content_type | varchar(100) | not null — MIME declarado, já v
+         +alidado contra a allowlist (per `phase-03-videos/TD-11`) |     
+      42 +| size_bytes | bigint | not null — tamanho declarado; `1 ≤ size
+         +_bytes ≤ 10737418240` (10 × 1024³, per `phase-03-videos/TD-03` 
+         +revisão 2026-11-23) |                                          
+      43 +| storage_key | varchar(255) | not null — chave do objeto origi
+         +nal no bucket: `videos/{id}/original` (per `phase-03-videos/TD-
+         +02`) |                                                         
+      44 +| upload_id | varchar(255) | nullable — `UploadId` do S3 Multip
+         +art enquanto `status = draft`; `null` após o `complete` (per `p
+         +hase-03-videos/TD-03`) |                                       
+      45 +| part_size | integer | not null — tamanho de parte fixado no i
+         +nício: `67108864` (64MiB, _sugestão — sem origem normativa_, pe
+         +r `phase-03-videos/TD-03`) |                                   
+      46 +| part_count | integer | not null — `ceil(size_bytes / part_siz
+         +e)`; sempre ≤ 10.000 |                                         
+      47 +| thumbnail_key | varchar(255) | nullable — chave do thumbnail 
+         +gerado pelo worker: `thumbnails/{id}.jpg` (per `phase-03-videos
+         +/TD-02`, `phase-03-videos/TD-05`) |                            
+      48 +| duration_seconds | double precision | nullable — preenchida p
+         +elo worker a partir do `ffprobe` (per `phase-03-videos/TD-05` r
+         +evisão 2026-11-23) |                                           
+      49 +| metadata | jsonb | nullable — objeto com `width`, `height`, `
+         +videoCodec`, `audioCodec` (opcional), `bitrate`, `formatName`, 
+         +`sizeBytes`, extraídos do `ffprobe` (per `phase-03-videos/TD-05
+         +` revisão 2026-11-23) |                                        
+      50 +| failure_reason | text | nullable — mensagem do erro final gra
+         +vada pelo handler de falha final quando `status = failed` (per 
+         +`phase-03-videos/TD-10`) |                                     
+      51 +| created_at | timestamp | default now() |                     
+      52 +| updated_at | timestamp | default now(), on update |          
+      53 +                                                               
+      54 +**Relations:** `Channel` has many `Video` (one-to-many; `Video.
+         +channel_id` → `Channel.id`). O dono do vídeo é o `User` dono do
+         + `Channel` (`channels.user_id`).                               
+      55 +**Indexes:** unique on `public_id`; index on `channel_id`.     
+      56 +**Transições de status (per `phase-03-videos/TD-09`, `phase-03-
+         +videos/TD-10`):** `draft → processing` (no `complete` do upload
+         +, pela API) · `processing → ready` (worker, após metadados + th
+         +umbnail gravados) · `processing → failed` (handler de falha fin
+         +al do worker: `UnrecoverableError` ou tentativas esgotadas). Ne
+         +nhuma outra transição existe nesta fase. Rascunho abortado é **
+         +removido** (linha apagada), não ganha estado próprio (per `phas
+         +e-03-videos/TD-12`).                                           
+      57 +**Migration:** nova migration TypeORM cria o enum `video_status
+         +`, a tabela `videos`, o índice único em `public_id`, o índice e
+         +m `channel_id` e a FK para `channels` (`synchronize: false` her
+         +dado da Fase 01).                                              
+      58 +                                                               
+      59  ---
+      60 
+      61  ## Dependency Map
+
+● Data Model pronto. Agora API Contracts (7 endpoints).
+
+● Update(docs/phases/phase-03-videos/phase-03-videos.md)
+  ⎿  Added 178 lines
+       56  **Transições de status (per `phase-03-videos/TD-09`, `phase-03
+           -videos/TD-10`):** `draft → processing` (no `complete` do uplo
+           ad, pela API) · `processing → ready` (worker, após metadados +
+            thumbnail gravados) · `processing → failed` (handler de falha
+            final do worker: `UnrecoverableError` ou tentativas esgotadas
+           ). Nenhuma outra transição existe nesta fase. Rascunho abortad
+           o é **removido** (linha apagada), não ganha estado próprio (pe
+           r `phase-03-videos/TD-12`).
+       57  **Migration:** nova migration TypeORM cria o enum `video_statu
+           s`, a tabela `videos`, o índice único em `public_id`, o índice
+            em `channel_id` e a FK para `channels` (`synchronize: false`
+           herdado da Fase 01).
+       58 
+       59 +### API Contracts                                             
+       60 +                                                              
+       61 +Convenções herdadas: corpo de erro `{ statusCode, error, messa
+          +ge }` (per `phase-02-auth/TD-07`); campos do JSON em snake_cas
+          +e, como em `refresh_token` / `new_password` da Fase 02. A exce
+          +ção são as chaves internas do objeto `metadata`, transcritas l
+          +iteralmente do `phase-03-videos/TD-05`. Todo endpoint protegid
+          +o aceita `Authorization: Bearer <access_token>` (guard JWT glo
+          +bal, per `phase-02-auth/TD-02`); os endpoints públicos usam `@
+          +Public()`. Nenhum endpoint recebe os bytes do vídeo: as partes
+          + vão direto ao storage por URL pré-assinada (per `phase-03-vid
+          +eos/TD-03` revisão 2026-11-23). Cada endpoint recebe decorador
+          +es OpenAPI explícitos (`@ApiOperation`, `@ApiResponse` por sta
+          +tus com `ApiErrorEnvelope`, `@ApiParam`, `@ApiBody`), per `ope
+          +napi-docs-nestjs/TD-01` revisão 2026-05-12.                   
+       62 +                                                              
+       63 +#### POST /videos (SI-03.5)                                   
+       64 +                                                              
+       65 +Inicia o upload: valida o arquivo declarado, cria o rascunho (
+          +`status = draft`) e abre o S3 Multipart Upload (`CreateMultipa
+          +rtUploadCommand`) na chave `videos/{id}/original` (per `phase-
+          +03-videos/TD-03`, `phase-03-videos/TD-02`, `phase-03-videos/TD
+          +-11`).                                                        
+       66 +                                                              
+       67 +**Request headers:**                                          
+       68 +- Content-Type: application/json                              
+       69 +- Authorization: Bearer <access_token>                        
+       70 +                                                              
+       71 +**Request body:**                                             
+       72 +- file_name: string, required — 1 a 255 caracteres; a extensão
+          + precisa estar na allowlist                                   
+       73 +- content_type: string, required — precisa estar na allowlist 
+       74 +- size_bytes: integer, required — `1 ≤ size_bytes ≤ 1073741824
+          +0`                                                            
+       75 +                                                              
+       76 +**Response 201:**                                             
+       77 +- id: string (uuid)                                           
+       78 +- public_id: string                                           
+       79 +- status: `"draft"`                                           
+       80 +- part_size: integer — `67108864`                             
+       81 +- part_count: integer — `ceil(size_bytes / part_size)`        
+       82 +                                                              
+       83 +**Error responses:**                                          
+       84 +- 400 VALIDATION_ERROR: corpo fora do schema (campo ausente, t
+          +ipo errado, `size_bytes < 1`)                                 
+       85 +- 401 Unauthorized: sem token ou token inválido (guard global)
+       86 +- 413 VIDEO_TOO_LARGE: `size_bytes > 10737418240`; nenhum rasc
+          +unho é criado (per `phase-03-videos/TD-03` revisão 2026-11-23)
+       87 +- 415 UNSUPPORTED_VIDEO_FORMAT: `content_type` ou extensão de 
+          +`file_name` fora da allowlist; nenhum rascunho é criado (per `
+          +phase-03-videos/TD-11`)                                       
+       88 +                                                              
+       89  ---
+       90 
+       91 +#### POST /videos/:id/upload/parts (SI-03.6)                  
+       92 +                                                              
+       93 +Gera, em lote, URLs PUT pré-assinadas para as partes pedidas (
+          +`UploadPartCommand` assinado com o **cliente público**, `expir
+          +esIn: 3600`), per `phase-03-videos/TD-03`, `phase-03-videos/TD
+          +-02`. Também serve para renovar URLs expiradas.               
+       94 +                                                              
+       95 +**Request headers:**                                          
+       96 +- Content-Type: application/json                              
+       97 +- Authorization: Bearer <access_token>                        
+       98 +                                                              
+       99 +**Request body:**                                             
+      100 +- part_numbers: integer[], required — de 1 a 100 itens, sem re
+          +petição, cada item com `1 ≤ n ≤ part_count` do vídeo          
+      101 +                                                              
+      102 +**Response 200:**                                             
+      103 +- parts: array of `{ part_number: integer, url: string }` — um
+          +a entrada por item de `part_numbers`, em ordem ascendente     
+      104 +- expires_in: integer — `3600` (segundos)                     
+      105 +                                                              
+      106 +**Error responses:**                                          
+      107 +- 400 VALIDATION_ERROR: corpo fora do schema (array vazio, mai
+          +s de 100 itens, item não inteiro ou `< 1`)                    
+      108 +- 400 INVALID_PART_NUMBER: algum item `> part_count`          
+      109 +- 401 Unauthorized: sem token ou token inválido               
+      110 +- 404 VIDEO_NOT_FOUND: o vídeo não existe ou não pertence ao c
+          +anal do usuário                                               
+      111 +- 409 VIDEO_NOT_IN_DRAFT: o vídeo já saiu de `draft` (upload c
+          +oncluído)                                                     
+      112 +                                                              
+      113 +---                                                           
+      114 +                                                              
+      115 +#### GET /videos/:id/upload/parts (SI-03.6)                   
+      116 +                                                              
+      117 +Lista as partes que já chegaram ao storage (`ListPartsCommand`
+          +), para o cliente retomar um upload interrompido (per `phase-0
+          +3-videos/TD-03`).                                             
+      118 +                                                              
+      119 +**Request headers:**                                          
+      120 +- Authorization: Bearer <access_token>                        
+      121 +                                                              
+      122 +**Response 200:**                                             
+      123 +- parts: array of `{ part_number: integer, etag: string, size_
+          +bytes: integer }` — ordenado por `part_number` ascendente; vaz
+          +io se nenhuma parte chegou                                    
+      124 +- part_size: integer                                          
+      125 +- part_count: integer                                         
+      126 +                                                              
+      127 +**Error responses:**                                          
+      128 +- 401 Unauthorized: sem token ou token inválido               
+      129 +- 404 VIDEO_NOT_FOUND: o vídeo não existe ou não pertence ao c
+          +anal do usuário                                               
+      130 +- 409 VIDEO_NOT_IN_DRAFT: o vídeo já saiu de `draft`          
+      131 +                                                              
+      132 +---                                                           
+      133 +                                                              
+      134 +#### POST /videos/:id/upload/complete (SI-03.7)               
+      135 +                                                              
+      136 +Conclui o multipart (`CompleteMultipartUploadCommand` com as `
+          +Parts` ordenadas ascendentemente por `PartNumber`), passa o ví
+          +deo para `processing`, zera `upload_id` e publica o job `video
+          +.process` (ver `### Events/Messages`), per `phase-03-videos/TD
+          +-03`, `phase-03-videos/TD-09`, `phase-03-videos/TD-01`. **Idem
+          +potente:** se o vídeo já está em `processing`, `ready` ou `fai
+          +led`, responde 200 com o estado atual, sem chamar o storage e 
+          +sem enfileirar de novo.                                       
+      137 +                                                              
+      138 +**Request headers:**                                          
+      139 +- Content-Type: application/json                              
+      140 +- Authorization: Bearer <access_token>                        
+      141 +                                                              
+      142 +**Request body:**                                             
+      143 +- parts: array, required — de 1 a 10.000 itens, cada um `{ par
+          +t_number: integer (1–10000), etag: string (não vazio) }`; `par
+          +t_number` sem repetição. A API reordena por `part_number` ante
+          +s de enviar ao storage.                                       
+      144 +                                                              
+      145 +**Response 200:**                                             
+      146 +- id: string (uuid)                                           
+      147 +- public_id: string                                           
+      148 +- status: `"processing"` (ou o status atual, na chamada idempo
+          +tente)                                                        
+      149 +                                                              
+      150 +**Error responses:**                                          
+      151 +- 400 VALIDATION_ERROR: corpo fora do schema                  
+      152 +- 400 INVALID_UPLOAD_PARTS: o storage rejeitou a lista de part
+          +es (parte ausente, `etag` divergente, número de partes diferen
+          +te de `part_count`); o vídeo continua em `draft` e o cliente p
+          +ode retomar                                                   
+      153 +- 401 Unauthorized: sem token ou token inválido               
+      154 +- 404 VIDEO_NOT_FOUND: o vídeo não existe ou não pertence ao c
+          +anal do usuário                                               
+      155 +                                                              
+      156 +---                                                           
+      157 +                                                              
+      158 +#### DELETE /videos/:id/upload (SI-03.8)                      
+      159 +                                                              
+      160 +Aborta o upload: `AbortMultipartUploadCommand` descarta as par
+          +tes já enviadas e a linha do rascunho é apagada (per `phase-03
+          +-videos/TD-12`).                                              
+      161 +                                                              
+      162 +**Request headers:**                                          
+      163 +- Authorization: Bearer <access_token>                        
+      164 +                                                              
+      165 +**Response 204:** No content.                                 
+      166 +                                                              
+      167 +**Error responses:**                                          
+      168 +- 401 Unauthorized: sem token ou token inválido               
+      169 +- 404 VIDEO_NOT_FOUND: o vídeo não existe ou não pertence ao c
+          +anal do usuário                                               
+      170 +- 409 VIDEO_NOT_IN_DRAFT: o vídeo já saiu de `draft`; o abort 
+          +não se aplica                                                 
+      171 +                                                              
+      172 +---                                                           
+      173 +                                                              
+      174 +#### GET /videos/:id (SI-03.12)                               
+      175 +                                                              
+      176 +Consulta o status e o detalhe do próprio vídeo. Exige login e 
+          +ser dono do canal (per `phase-03-videos/TD-08` revisão 2026-11
+          +-23).                                                         
+      177 +                                                              
+      178 +**Request headers:**                                          
+      179 +- Authorization: Bearer <access_token>                        
+      180 +                                                              
+      181 +**Response 200:**                                             
+      182 +- id: string (uuid)                                           
+      183 +- public_id: string                                           
+      184 +- status: `"draft"` | `"processing"` | `"ready"` | `"failed"` 
+      185 +- original_filename: string                                   
+      186 +- content_type: string                                        
+      187 +- size_bytes: integer                                         
+      188 +- duration_seconds: number | null                             
+      189 +- metadata: `{ width, height, videoCodec, audioCodec?, bitrate
+          +, formatName, sizeBytes }` | null                             
+      190 +- thumbnail_url: string | null — URL GET pré-assinada pelo cli
+          +ente público quando `thumbnail_key` existe                    
+      191 +- failure_reason: string | null                               
+      192 +- created_at: string (ISO-8601)                               
+      193 +- updated_at: string (ISO-8601)                               
+      194 +                                                              
+      195 +**Error responses:**                                          
+      196 +- 400 VALIDATION_ERROR: `:id` não é UUID                      
+      197 +- 401 Unauthorized: sem token ou token inválido               
+      198 +- 404 VIDEO_NOT_FOUND: o vídeo não existe ou não pertence ao c
+          +anal do usuário                                               
+      199 +                                                              
+      200 +---                                                           
+      201 +                                                              
+      202 +#### GET /videos/:publicId/stream (SI-03.13)                  
+      203 +                                                              
+      204 +Público (`@Public()`). Autoriza e responde **302** com `Locati
+          +on` = URL GET pré-assinada pelo cliente público para o objeto 
+          +original (`GetObjectCommand` sem `ResponseContentDisposition`,
+          + `ResponseContentType` = `content_type` do vídeo). O storage a
+          +tende `Range` (206) nativamente, então o player reproduz sem b
+          +aixar o arquivo inteiro (per `phase-03-videos/TD-08`, `phase-0
+          +3-videos/TD-02`).                                             
+      205 +                                                              
+      206 +**Request headers:** nenhum obrigatório.                      
+      207 +                                                              
+      208 +**Response 302:** header `Location: <url pré-assinada>`; sem c
+          +orpo.                                                         
+      209 +                                                              
+      210 +**Error responses:**                                          
+      211 +- 404 VIDEO_NOT_FOUND: `publicId` inexistente **ou** vídeo com
+          + status `draft`, `processing` ou `failed` — resposta idêntica,
+          + sem revelar que o vídeo existe (per `phase-03-videos/TD-08` r
+          +evisão 2026-11-23)                                            
+      212 +                                                              
+      213 +---                                                           
+      214 +                                                              
+      215 +#### GET /videos/:publicId/download (SI-03.13)                
+      216 +                                                              
+      217 +Público (`@Public()`). Igual ao stream, mas a URL pré-assinada
+          + leva `ResponseContentDisposition: attachment; filename="{orig
+          +inal_filename}"`, o que força o download (per `phase-03-videos
+          +/TD-08`).                                                     
+      218 +                                                              
+      219 +**Request headers:** nenhum obrigatório.                      
+      220 +                                                              
+      221 +**Response 302:** header `Location: <url pré-assinada com Cont
+          +ent-Disposition attachment>`; sem corpo.                      
+      222 +                                                              
+      223 +**Error responses:**                                          
+      224 +- 404 VIDEO_NOT_FOUND: mesma regra do stream                  
+      225 +                                                              
+      226 +---                                                           
+      227 +                                                              
+      228 +#### Validation Rules — Upload de vídeo                       
+      229 +                                                              
+      230 +- `:id` (rotas do dono): UUID, validado com `ParseUUIDPipe` → 
+          +400 `VALIDATION_ERROR`.                                       
+      231 +- `:publicId` (rotas públicas): string; formato inválido não g
+          +era 400 — responde 404 `VIDEO_NOT_FOUND`, como o `publicId` in
+          +existente.                                                    
+      232 +- **Allowlist de formatos** (per `phase-03-videos/TD-11`, prim
+          +eira camada; valores _sugestão — sem origem normativa_): `cont
+          +ent_type` ∈ {`video/mp4`, `video/quicktime`, `video/webm`, `vi
+          +deo/x-matroska`} **e** extensão de `file_name` ∈ {`.mp4`, `.mo
+          +v`, `.webm`, `.mkv`} (comparação sem diferenciar maiúsculas). 
+          +A allowlist só barra o erro honesto; a validação real é o `ffp
+          +robe` no worker (segunda camada). Arquivo ilegível → `failed`.
+      233 +- **Tamanho máximo:** `10737418240` bytes (10 × 1024³). Acima 
+          +disso a API responde 413 `VIDEO_TOO_LARGE` sem criar rascunho.
+      234 +- **Partes:** `part_size = 67108864`. `part_number` é inteiro 
+          +de 1 a 10.000 e nunca maior que o `part_count` do vídeo. O lot
+          +e de URLs aceita até 100 partes por chamada (_sugestão — sem o
+          +rigem normativa_).                                            
+      235 +- **Expiração das URLs pré-assinadas** (_sugestão — sem origem
+          + normativa_): partes de upload `3600`s (per `phase-03-videos/T
+          +D-03`); stream, download e thumbnail `3600`s; leitura interna 
+          +do worker `900`s (padrão do presigner, per `phase-03-videos/TD
+          +-06`).                                                        
+      236 +                                                              
+      237 +---                                                           
+      238 +                                                              
+      239  ## Dependency Map
+      240 
+      241  <!-- Dep Map will be written in Phase B -->
+
+● API Contracts pronto. Agora Authorization Matrix e Error Catalog.
+
+● Update(docs/phases/phase-03-videos/phase-03-videos.md)
+  ⎿  Added 31 lines
+      234  - **Partes:** `part_size = 67108864`. `part_number` é inteiro
+           de 1 a 10.000 e nunca maior que o `part_count` do vídeo. O lot
+           e de URLs aceita até 100 partes por chamada (_sugestão — sem o
+           rigem normativa_).
+      235  - **Expiração das URLs pré-assinadas** (_sugestão — sem origem
+            normativa_): partes de upload `3600`s (per `phase-03-videos/T
+           D-03`); stream, download e thumbnail `3600`s; leitura interna
+           do worker `900`s (padrão do presigner, per `phase-03-videos/TD
+           -06`).
+      236 
+      237 +### Authorization Matrix                                      
+      238 +                                                              
+      239 +"Owner" = usuário autenticado cujo `Channel` é o `channel_id` 
+          +do vídeo. Para não-donos autenticados, as rotas do dono respon
+          +dem 404 `VIDEO_NOT_FOUND` (não 403), sem revelar que o vídeo e
+          +xiste. Stream e download são públicos, mas só para `status = r
+          +eady`; nos demais status respondem 404 para qualquer chamador,
+          + inclusive o dono (per `phase-03-videos/TD-08` revisão 2026-11
+          +-23). Visibilidade (público/unlisted) e publicação ficam para 
+          +a Fase 04.                                                    
+      240 +                                                              
+      241 +| Endpoint | Anonymous | Authenticated | Owner |              
+      242 +|----------|-----------|---------------|-------|              
+      243 +| POST /videos | ✗ (401) | ✓ (vira dono do rascunho criado) | 
+          +— |                                                           
+      244 +| POST /videos/:id/upload/parts | ✗ (401) | ✗ (404) | ✓ |     
+      245 +| GET /videos/:id/upload/parts | ✗ (401) | ✗ (404) | ✓ |      
+      246 +| POST /videos/:id/upload/complete | ✗ (401) | ✗ (404) | ✓ |  
+      247 +| DELETE /videos/:id/upload | ✗ (401) | ✗ (404) | ✓ |         
+      248 +| GET /videos/:id | ✗ (401) | ✗ (404) | ✓ |                   
+      249 +| GET /videos/:publicId/stream | ✓ só `ready` (senão 404) | ✓ 
+          +só `ready` (senão 404) | ✓ só `ready` (senão 404) |           
+      250 +| GET /videos/:publicId/download | ✓ só `ready` (senão 404) | 
+          +✓ só `ready` (senão 404) | ✓ só `ready` (senão 404) |         
+      251 +                                                              
+      252 +### Error Catalog                                             
+      253 +                                                              
+      254 +Formato herdado da Fase 02: `{ statusCode, error, message }`, 
+          +com `error` = código de domínio (per `phase-02-auth/TD-07`). N
+          +ovos códigos desta fase, como subclasses de `DomainException`:
+      255 +                                                              
+      256 +| errorCode | HTTP | Trigger |                                
+      257 +|-----------|------|---------|                                
+      258 +| VIDEO_TOO_LARGE | 413 | `POST /videos` com `size_bytes > 107
+          +37418240`; nenhum rascunho é criado |                         
+      259 +| UNSUPPORTED_VIDEO_FORMAT | 415 | `POST /videos` com `content
+          +_type` ou extensão de `file_name` fora da allowlist; nenhum ra
+          +scunho é criado |                                             
+      260 +| VIDEO_NOT_FOUND | 404 | Vídeo inexistente ou de outro canal 
+          +(rotas do dono); `publicId` inexistente ou vídeo fora de `read
+          +y` (stream/download) |                                        
+      261 +| VIDEO_NOT_IN_DRAFT | 409 | Gerar/listar URLs de parte ou abo
+          +rtar um vídeo que já saiu de `draft` |                        
+      262 +| INVALID_PART_NUMBER | 400 | `part_numbers` com item maior qu
+          +e o `part_count` do vídeo |                                   
+      263 +| INVALID_UPLOAD_PARTS | 400 | O storage rejeitou o `CompleteM
+          +ultipartUpload` (`InvalidPart` / `InvalidPartOrder` / parte au
+          +sente); o vídeo continua em `draft` |                         
+      264 +| VALIDATION_ERROR | 400 | Herdado — corpo ou parâmetro fora d
+          +o schema (`ValidationExceptionFilter`) |                      
+      265 +                                                              
+      266 +Erros do worker não viram resposta HTTP. Arquivo que o `ffprob
+          +e` rejeita (sem stream de vídeo, ilegível) → `UnrecoverableErr
+          +or` → `status = failed` + `failure_reason`, sem retry. Falhas 
+          +transitórias (storage/Redis indisponível, timeout do FFmpeg) →
+          + exceção comum → retry pela fila; depois de 3 tentativas → `fa
+          +iled` (per `phase-03-videos/TD-10`, `phase-03-videos/TD-11`). 
+      267 +                                                              
+      268  ---
+      269 
+      270  ## Dependency Map
+
+● Update(docs/phases/phase-03-videos/phase-03-videos.md)
+  ⎿  Added 1 line, removed 1 line
+      133 
+      134  #### POST /videos/:id/upload/complete (SI-03.7)
+      135 
+      136 -Conclui o multipart (`CompleteMultipartUploadCommand` com as `
+          -Parts` ordenadas ascendentemente por `PartNumber`), passa o ví
+          -deo para `processing`, zera `upload_id` e publica o job `video
+          -.process` (ver `### Events/Messages`), per `phase-03-videos/TD
+          --03`, `phase-03-videos/TD-09`, `phase-03-videos/TD-01`. **Idem
+          -potente:** se o vídeo já está em `processing`, `ready` ou `fai
+          -led`, responde 200 com o estado atual, sem chamar o storage e 
+          -sem enfileirar de novo.                                       
+      136 +Conclui o multipart (`CompleteMultipartUploadCommand` com as `
+          +Parts` ordenadas ascendentemente por `PartNumber`), passa o ví
+          +deo para `processing`, zera `upload_id` e publica o job `proce
+          +ss-video` na fila `videos` (ver `### Events/Messages`), per `p
+          +hase-03-videos/TD-03`, `phase-03-videos/TD-09`, `phase-03-vide
+          +os/TD-01`. **Idempotente:** se o vídeo já está em `processing`
+          +, `ready` ou `failed`, responde 200 com o estado atual, sem ch
+          +amar o storage e sem enfileirar de novo.                      
+      137 
+      138  **Request headers:**
+      139  - Content-Type: application/json
+
+● Update(docs/phases/phase-03-videos/phase-03-videos.md)
+  ⎿  Added 25 lines
+      265 
+      266  Erros do worker não viram resposta HTTP. Arquivo que o `ffprob
+           e` rejeita (sem stream de vídeo, ilegível) → `UnrecoverableErr
+           or` → `status = failed` + `failure_reason`, sem retry. Falhas
+           transitórias (storage/Redis indisponível, timeout do FFmpeg) →
+            exceção comum → retry pela fila; depois de 3 tentativas → `fa
+           iled` (per `phase-03-videos/TD-10`, `phase-03-videos/TD-11`).
+      267 
+      268 +### Events/Messages                                           
+      269 +                                                              
+      270 +Fila BullMQ sobre Redis (per `phase-03-videos/TD-01`). A fila 
+          +é registrada com `BullModule.forRootAsync` (conexão vinda de u
+          +m namespace `registerAs('queue', ...)`) e `BullModule.register
+          +Queue({ name: 'videos' })`. Todas as filas, workers e `QueueEv
+          +ents` usam o mesmo `prefix`, lido de `QUEUE_PREFIX`; os testes
+          + usam um prefixo único por suíte (per `phase-03-videos/TD-04`,
+          + `phase-03-videos/TD-13`).                                    
+      271 +                                                              
+      272 +#### process-video (fila `videos`)                            
+      273 +                                                              
+      274 +**Payload:**                                                  
+      275 +                                                              
+      276 +```json                                                       
+      277 +{ "videoId": "uuid" }                                         
+      278 +```                                                           
+      279 +                                                              
+      280 +**Producer:** `VideoProcessingQueue` (serviço produtor injetad
+          +o com `@InjectQueue('videos')`), chamado pelo `VideosService` 
+          +no `POST /videos/:id/upload/complete` (per `phase-03-videos/TD
+          +-03`, `phase-03-videos/TD-01`)                                
+      281 +**Consumer:** `VideoProcessor` (`@Processor('videos')`, estend
+          +e `WorkerHost`), que roda **só** no entrypoint do worker (`src
+          +/worker.main.ts` + `WorkerModule`, container `video-worker`, p
+          +er `phase-03-videos/TD-04`). O `AppModule` da API registra a f
+          +ila só como produtora.                                        
+      282 +**Trigger:** transição `draft → processing` no `complete` do u
+          +pload.                                                        
+      283 +**Processamento** (per `phase-03-videos/TD-05`, `phase-03-vide
+          +os/TD-06`, `phase-03-videos/TD-11`):                          
+      284 +1. Carrega o vídeo. Se não existe ou não está em `processing`,
+          + encerra sem erro (no-op idempotente).                        
+      285 +2. Gera uma URL GET pré-assinada com o **cliente interno** (`S
+          +3_ENDPOINT`, `expiresIn` 900s).                               
+      286 +3. Roda `ffprobe` (via `execFile`) sobre a URL e extrai `durat
+          +ion_seconds` + `metadata`. Sem stream de vídeo ou saída ilegív
+          +el → `UnrecoverableError`.                                    
+      287 +4. Extrai 1 frame com `ffmpeg` (via `execFile`, seek por HTTP 
+          +range até ~10% da duração, _sugestão — sem origem normativa_) 
+          +para um JPEG temporário e envia para `thumbnails/{id}.jpg` pel
+          +o cliente interno.                                            
+      288 +5. Em uma única atualização grava `duration_seconds`, `metadat
+          +a`, `thumbnail_key` e `status = ready`.                       
+      289 +**Job options** (per `phase-03-videos/TD-10`): `attempts: 3`, 
+          +`backoff: { type: 'exponential', delay: 1000 }` (`delay` _suge
+          +stão — sem origem normativa_), `jobId: videoId` (deduplica ree
+          +nvio), `removeOnComplete: true`.                              
+      290 +**Falha final** (per `phase-03-videos/TD-10`): `@OnWorkerEvent
+          +('failed')`. Quando `err instanceof UnrecoverableError` **ou**
+          + `job.attemptsMade >= job.opts.attempts`, grava `status = fail
+          +ed` e `failure_reason = err.message`. Falhas intermediárias nã
+          +o mudam o status (continua `processing`).                     
+      291 +**Delivery semantics:** at-least-once (per `phase-03-videos/TD
+          +-01`). O processor é idempotente: reprocessar sobrescreve os m
+          +esmos campos e a mesma chave de thumbnail.                    
+      292 +                                                              
+      293  ---
+      294 
+      295  ## Dependency Map
+
+● Tech Specs completas. Sem regras em docs/rules/plan-build/, então a A4.5 é
+  pulada. Vou marcar a Fase A como concluída.
+
+● Update(docs/phases/phase-03-videos/phase-03-videos.md)
+  ⎿  Added 2 lines
+      292 
+      293  ---
+      294 
+      295 +<!-- phase-a-complete -->                                     
+      296 +                                                              
+      297  ## Dependency Map
+      298 
+      299  <!-- Dep Map will be written in Phase B -->
+
+● Answered Claude's questions:
+  ⎿  · A Fase A do /plan-build phase-03-videos terminou: o scaffold e as 
+     Technical Specifications (Data Model, API Contracts, Authorization Matrix, 
+     Error Catalog, Events/Messages) estão em 
+     docs/phases/phase-03-videos/phase-03-videos.md. Sigo agora para a Fase B 
+     (Step Implementations, Dependency Map, Deliverables) nesta mesma sessão? → 
+     Parar aqui
+
+● FASE A CONCLUÍDA. Escrevi o scaffold e as Technical Specifications (Data
+  Model, API Contracts, Authorization Matrix, Error Catalog, Events/Messages) da
+  fase 03 em docs/phases/phase-03-videos/phase-03-videos.md. Os marcadores de
+  retomada estão no lugar: <!-- phase-a-complete -->, <!-- SIs will be written 
+  in Phase B --> e os de Dependency Map e Deliverables. Próximo passo: rode
+  /plan-build phase-03-videos quando quiser. O Gate 10 vai encontrar os dois
+  marcadores obrigatórios e seguir direto para a Fase B.
+
+  Antes da Fase B, revise estas escolhas. Os TDs do context.md não dão nome a
+  elas, então eu as defini seguindo o código e as convenções que já existem:
+  - Rotas: POST /videos, POST|GET /videos/:id/upload/parts, POST 
+    /videos/:id/upload/complete, DELETE /videos/:id/upload (abort), GET 
+    /videos/:id (só o dono), GET /videos/:publicId/stream|download (302,
+    públicas).
+  - Campos:
+    - O JSON da API usa snake_case, como refresh_token na Fase 02.
+    - A coluna da URL única se chama public_id.
+    - As chaves no storage são videos/{id}/original e thumbnails/{id}.jpg.
+  - Novos códigos de erro: VIDEO_TOO_LARGE (413), UNSUPPORTED_VIDEO_FORMAT
+    (415), VIDEO_NOT_FOUND (404), VIDEO_NOT_IN_DRAFT (409), INVALID_PART_NUMBER
+    e INVALID_UPLOAD_PARTS (400).
+  - Fila: a fila se chama videos, o job process-video e o jobId é o videoId,
+    para não processar o mesmo vídeo duas vezes.
+  - Valores marcados como sugestão: a allowlist de MIME e extensões, o lote de
+    no máximo 100 partes, o tempo de expiração das URLs e o delay do backoff.
+
+✻ Worked for 4m 9s · done 5:31 PM
+
+❯ Revisão da Fase A de docs/phases/phase-03-videos/phase-03-videos.md:          
+  1. Corrija as chaves do storage para seguir a TD-02 decidida:                 
+  videos/{videoId}/original e videos/{videoId}/thumbnail.jpg (não               
+  thumbnails/{id}.jpg). Ajuste todas as ocorrências nas Technical Specs.        
+  2. Depois me mostre, em tabelas, para eu revisar: (a) o Data Model completo   
+  da tabela videos (coluna, tipo, nulidade, default, índices/constraints),      
+  confirmando o enum de status draft | processing | ready | failed (TD-09); (b) 
+  o Error Catalog completo; (c) o Events/Messages (fila, job, payload,          
+  tentativas, backoff, efeito no status em sucesso e na falha final).           
+     Mostre o diff antes de salvar. Responda em português.                      
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+● Encontrei 4 ocorrências das chaves antigas. Este é o diff proposto. Ainda não 
+  salvei nada.
+
+  --- a/docs/phases/phase-03-videos/phase-03-videos.md
+  +++ b/docs/phases/phase-03-videos/phase-03-videos.md
+  @@ -43 (Data Model → storage_key) @@
+  -| storage_key | varchar(255) | not null — chave do objeto original no bucket:
+  `videos/{id}/original` (per `phase-03-videos/TD-02`) |
+  +| storage_key | varchar(255) | not null — chave do objeto original no bucket:
+  `videos/{videoId}/original` (per `phase-03-videos/TD-02`) |
+  @@ -47 (Data Model → thumbnail_key) @@
+  -| thumbnail_key | varchar(255) | nullable — chave do thumbnail gerado pelo 
+  worker: `thumbnails/{id}.jpg` (per `phase-03-videos/TD-02`, 
+  `phase-03-videos/TD-05`) |
+  +| thumbnail_key | varchar(255) | nullable — chave do thumbnail gerado pelo 
+  worker: `videos/{videoId}/thumbnail.jpg` (per `phase-03-videos/TD-02`, 
+  `phase-03-videos/TD-05`) |
+  @@ -65 (API Contracts → POST /videos) @@
+  -... (`CreateMultipartUploadCommand`) na chave `videos/{id}/original` (per ...
+  +... (`CreateMultipartUploadCommand`) na chave `videos/{videoId}/original` 
+  (per ...
+  @@ -287 (Events/Messages → passo 4) @@
+  -... para um JPEG temporário e envia para `thumbnails/{id}.jpg` pelo cliente 
+  interno.
+  +... para um JPEG temporário e envia para `videos/{videoId}/thumbnail.jpg` 
+  pelo cliente interno.
+
+  Nas chaves, {videoId} é o id (uuid) da linha em videos, e não o public_id. As
+  tabelas abaixo já mostram o estado depois da correção.
+
+  (a) Data Model: tabela videos
+
+  Coluna: id
+  Tipo: uuid
+  Nulidade: NOT NULL
+  Default: uuid_generate_v4()
+  Índices / constraints: PK
+  ────────────────────────────────────────
+  Coluna: public_id
+  Tipo: varchar(16)
+  Nulidade: NOT NULL
+  Default: — (gerado na app: node:crypto, base64url de 8 bytes)
+  Índices / constraints: UNIQUE; colisão → nova tentativa (TD-07)
+  ────────────────────────────────────────
+  Coluna: channel_id
+  Tipo: uuid
+  Nulidade: NOT NULL
+  Default: —
+  Índices / constraints: FK → channels.id; índice
+  ────────────────────────────────────────
+  Coluna: status
+  Tipo: enum video_status
+  Nulidade: NOT NULL
+  Default: 'draft'
+  Índices / constraints: valores: draft | processing | ready | failed (TD-09)
+    ✅
+  ────────────────────────────────────────
+  Coluna: original_filename
+  Tipo: varchar(255)
+  Nulidade: NOT NULL
+  Default: —
+  Índices / constraints: —
+  ────────────────────────────────────────
+  Coluna: content_type
+  Tipo: varchar(100)
+  Nulidade: NOT NULL
+  Default: —
+  Índices / constraints: validado na app contra a allowlist (TD-11)
+  ────────────────────────────────────────
+  Coluna: size_bytes
+  Tipo: bigint
+  Nulidade: NOT NULL
+  Default: —
+  Índices / constraints: 1 ≤ x ≤ 10737418240, validado na app (TD-03)
+  ────────────────────────────────────────
+  Coluna: storage_key
+  Tipo: varchar(255)
+  Nulidade: NOT NULL
+  Default: —
+  Índices / constraints: videos/{videoId}/original (TD-02)
+  ────────────────────────────────────────
+  Coluna: upload_id
+  Tipo: varchar(255)
+  Nulidade: NULL
+  Default: —
+  Índices / constraints: preenchido em draft; null após o complete
+  ────────────────────────────────────────
+  Coluna: part_size
+  Tipo: integer
+  Nulidade: NOT NULL
+  Default: — (a app grava 67108864)
+  Índices / constraints: —
+  ────────────────────────────────────────
+  Coluna: part_count
+  Tipo: integer
+  Nulidade: NOT NULL
+  Default: —
+  Índices / constraints: ceil(size_bytes / part_size) ≤ 10.000
+  ────────────────────────────────────────
+  Coluna: thumbnail_key
+  Tipo: varchar(255)
+  Nulidade: NULL
+  Default: —
+  Índices / constraints: videos/{videoId}/thumbnail.jpg (TD-02)
+  ────────────────────────────────────────
+  Coluna: duration_seconds
+  Tipo: double precision
+  Nulidade: NULL
+  Default: —
+  Índices / constraints: preenchida pelo worker (TD-05)
+  ────────────────────────────────────────
+  Coluna: metadata
+  Tipo: jsonb
+  Nulidade: NULL
+  Default: —
+  Índices / constraints: width, height, videoCodec, audioCodec?, bitrate,
+    formatName, sizeBytes (TD-05)
+  ────────────────────────────────────────
+  Coluna: failure_reason
+  Tipo: text
+  Nulidade: NULL
+  Default: —
+  Índices / constraints: gravada pelo handler de falha final (TD-10)
+  ────────────────────────────────────────
+  Coluna: created_at
+  Tipo: timestamp
+  Nulidade: NOT NULL
+  Default: now()
+  Índices / constraints: —
+  ────────────────────────────────────────
+  Coluna: updated_at
+  Tipo: timestamp
+  Nulidade: NOT NULL
+  Default: now() (atualiza a cada update)
+  Índices / constraints: —
+
+  As regras de faixa (size_bytes, part_count) são checadas na aplicação. Não
+  planejei CHECK constraint no banco.
+
+  Transições de status: draft → processing (API, no complete) · processing → 
+  ready (worker) · processing → failed (falha final). Um rascunho abortado tem a
+  linha apagada (TD-12).
+
+  (b) Error Catalog
+
+  Envelope herdado: { statusCode, error, message } (phase-02-auth/TD-07).
+
+  ┌──────────────────────────┬──────┬────────────────────────────────────────┐
+  │        errorCode         │ HTTP │                Trigger                 │
+  ├──────────────────────────┼──────┼────────────────────────────────────────┤
+  │ VIDEO_TOO_LARGE          │ 413  │ POST /videos com size_bytes >          │
+  │                          │      │ 10737418240; nenhum rascunho é criado  │
+  ├──────────────────────────┼──────┼────────────────────────────────────────┤
+  │                          │      │ POST /videos com content_type ou       │
+  │ UNSUPPORTED_VIDEO_FORMAT │ 415  │ extensão fora da allowlist; nenhum     │
+  │                          │      │ rascunho é criado                      │
+  ├──────────────────────────┼──────┼────────────────────────────────────────┤
+  │                          │      │ Rotas do dono: vídeo inexistente ou de │
+  │ VIDEO_NOT_FOUND          │ 404  │  outro canal. Stream/download:         │
+  │                          │      │ publicId inexistente ou status         │
+  │                          │      │ diferente de ready                     │
+  ├──────────────────────────┼──────┼────────────────────────────────────────┤
+  │                          │      │ Gerar ou listar URLs de parte, ou      │
+  │ VIDEO_NOT_IN_DRAFT       │ 409  │ abortar, quando o vídeo já saiu de     │
+  │                          │      │ draft                                  │
+  ├──────────────────────────┼──────┼────────────────────────────────────────┤
+  │ INVALID_PART_NUMBER      │ 400  │ part_numbers com item maior que        │
+  │                          │      │ part_count                             │
+  ├──────────────────────────┼──────┼────────────────────────────────────────┤
+  │                          │      │ O storage rejeitou o                   │
+  │ INVALID_UPLOAD_PARTS     │ 400  │ CompleteMultipartUpload; o vídeo       │
+  │                          │      │ continua em draft                      │
+  ├──────────────────────────┼──────┼────────────────────────────────────────┤
+  │ VALIDATION_ERROR         │ 400  │ Herdado: corpo ou parâmetro fora do    │
+  │                          │      │ schema                                 │
+  └──────────────────────────┴──────┴────────────────────────────────────────┘
+
+  Erros do worker não viram resposta HTTP. Arquivo inválido → UnrecoverableError
+  → failed sem retry. Erro transitório → retry até esgotar → failed.
+
+  (c) Events/Messages
+
+  ┌────────────────┬────────────────────────────────────────────────────────┐
+  │      Item      │                         Valor                          │
+  ├────────────────┼────────────────────────────────────────────────────────┤
+  │                │ videos (BullMQ + Redis, TD-01); prefix vindo de        │
+  │ Fila           │ QUEUE_PREFIX, com prefixo único por suíte nos testes   │
+  │                │ (TD-04, TD-13)                                         │
+  ├────────────────┼────────────────────────────────────────────────────────┤
+  │ Job            │ process-video                                          │
+  ├────────────────┼────────────────────────────────────────────────────────┤
+  │ Payload        │ { "videoId": "uuid" }                                  │
+  ├────────────────┼────────────────────────────────────────────────────────┤
+  │ Producer       │ VideoProcessingQueue, chamado pelo VideosService no    │
+  │                │ POST /videos/:id/upload/complete                       │
+  ├────────────────┼────────────────────────────────────────────────────────┤
+  │ Consumer       │ VideoProcessor (@Processor('videos'), WorkerHost), só  │
+  │                │ no entrypoint do worker (container video-worker)       │
+  ├────────────────┼────────────────────────────────────────────────────────┤
+  │ Tentativas     │ attempts: 3 (TD-10)                                    │
+  ├────────────────┼────────────────────────────────────────────────────────┤
+  │ Backoff        │ { type: 'exponential', delay: 1000 }; o delay é        │
+  │                │ sugestão, sem origem normativa                         │
+  ├────────────────┼────────────────────────────────────────────────────────┤
+  │ Outras opções  │ jobId: videoId (deduplica), removeOnComplete: true     │
+  ├────────────────┼────────────────────────────────────────────────────────┤
+  │ Entrega        │ at-least-once; o processor é idempotente (no-op se o   │
+  │                │ vídeo não está em processing)                          │
+  ├────────────────┼────────────────────────────────────────────────────────┤
+  │ Efeito em      │ Uma única atualização grava duration_seconds,          │
+  │ sucesso        │ metadata, thumbnail_key =                              │
+  │                │ videos/{videoId}/thumbnail.jpg e status = ready        │
+  ├────────────────┼────────────────────────────────────────────────────────┤
+  │ Falha          │ O status não muda (continua processing); o job é       │
+  │ intermediária  │ retentado                                              │
+  ├────────────────┼────────────────────────────────────────────────────────┤
+  │                │ @OnWorkerEvent('failed'), quando err instanceof        │
+  │ Falha final    │ UnrecoverableError ou attemptsMade >= attempts: status │
+  │                │  = failed e failure_reason = err.message               │
+  └────────────────┴────────────────────────────────────────────────────────┘
+
+  Posso aplicar o diff das 4 linhas?
+
+✻ Cogitated for 28s · done 5:34 PM
+
+❯ sim, aplique o diff                                                           
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Apliquei o diff em docs/phases/phase-03-videos/phase-03-videos.md. As 4 linhas
+  agora usam as chaves da TD-02:
+
+  - Linha 43 (storage_key, Data Model): videos/{videoId}/original
+  - Linha 47 (thumbnail_key, Data Model): videos/{videoId}/thumbnail.jpg
+  - Linha 65 (POST /videos, API Contracts): videos/{videoId}/original
+  - Linha 287 (process-video passo 4, Events/Messages):
+    videos/{videoId}/thumbnail.jpg
+
+  Depois de salvar, procurei de novo no arquivo e não sobrou nenhuma ocorrência
+  de thumbnails/ nem de videos/{id}. Os marcadores <!-- phase-a-complete --> e
+  <!-- SIs will be written in Phase B --> continuam no arquivo. Por isso, ao
+  rodar /plan-build phase-03-videos de novo, ele vai direto para a Fase B (Step
+  Implementations, Dependency Map e Deliverables).
+
+✻ Worked for 11s · done 5:38 PM
+※ recap: Estamos montando o plano de implementação da fase 03 (vídeos). A Fase A, com as especificações técnicas já corrigidas para as chaves de storage da TD-02, está salva. Próximo passo: rodar /plan-build phase-03-videos para escrever a Fase B (Step Implementations, Dependency Map e Deliverables).
+
+❯ Dois ajustes no Error Catalog e nos contratos de                              
+  docs/phases/phase-03-videos/phase-03-videos.md:                               
+  1. POST /videos/:id/upload/complete quando o vídeo não está mais em draft     
+  (complete repetido) deve responder VIDEO_NOT_IN_DRAFT (409), sem reenfileirar 
+  — inclua o complete no trigger desse erro e no contrato do endpoint.          
+  2. A TD-03 decidiu conferir o tamanho com HeadObject no complete: defina o    
+  erro quando o tamanho real do objeto diverge de size_bytes declarado (ex.:    
+  UPLOAD_SIZE_MISMATCH, 400 ou 422 — escolha o mais coerente com o envelope     
+  herdado), o que acontece com o objeto e o rascunho nesse caso (sugestão:      
+  remover o objeto e manter o vídeo em draft ou marcar failed — escolha e       
+  justifique com base nas TDs), e garanta que nenhum job é enfileirado. Isso    
+  impede burlar o limite de 10GB.                                               
+     Mostre o diff antes de salvar. Responda em português.                      
+
+  Searched for 2 patterns, read 1 file (ctrl+o to expand)
+
+● Conferi os dois pedidos nas TDs antes de propor o diff:
+
+  - HeadObject: está decidido, mas no corpo da Option A da TD-03
+    (technical-decisions-phase-03-videos.md:133: "faz CompleteMultipartUpload,
+    confere o tamanho com HeadObject e enfileira o job"). A Recommendation
+    copiada no context.md não traz esse trecho, e por isso ele ficou de fora da
+    Fase A.
+  - 409 no complete repetido: a TD-03 diz que o complete "é idempotente". O 409
+    mantém essa idempotência nos efeitos: uma segunda chamada não toca o
+    storage, não muda o status e não enfileira. O que muda é só a resposta. A
+    TD-12 usa o mesmo padrão no abort ("abortar um vídeo que não está mais draft
+    responde 409"), então os dois endpoints ficam coerentes.
+
+  Escolhas para o UPLOAD_SIZE_MISMATCH
+
+  HTTP 400, não 422. O envelope herdado diferencia os casos pelo campo error,
+  não pelo status HTTP. Os erros parecidos deste mesmo fluxo
+  (INVALID_UPLOAD_PARTS, INVALID_PART_NUMBER) já são 400, e o projeto ainda não
+  usa 422. Usar 422 só aqui seria uma convenção nova e isolada.
+
+  Destino: apagar o objeto e apagar o rascunho, sem enfileirar job.
+  - Apagar o objeto: ele pode passar de 10GB, que é justamente a burla a evitar.
+    Mantê-lo deixaria lixo, ou abuso, no storage.
+  - Não manter em draft: depois do CompleteMultipartUpload, o UploadId já foi
+    consumido. Não dá mais para retomar (ListParts falha) nem gerar URLs de
+    parte. Seria um rascunho morto, que nenhuma operação consegue usar.
+  - Não marcar failed: pela TD-09/TD-10, failed é o resultado do processamento,
+    gravado pelo handler de falha final do worker. Aqui o vídeo nunca chegou a
+    ser processado. Usar failed criaria uma transição draft → failed que as TDs
+    não preveem.
+  - Apagar a linha: é o mesmo destino que a TD-12 dá ao rascunho abortado
+    ("remove o registro do rascunho", "o TD-09 não tem estado aborted"). Nenhum
+    estado novo é criado, e o cliente recomeça com POST /videos.
+
+  Também incluí no texto uma atualização condicional (WHERE status = 'draft').
+  Ela garante o 409 mesmo com dois complete ao mesmo tempo, e não só em chamadas
+  em sequência.
+
+  Diff proposto (ainda não salvo)
+
+  @@ -56 (Data Model → Transições de status) @@
+  -... Nenhuma outra transição existe nesta fase. Rascunho abortado é 
+  **removido** (linha apagada), não ganha estado próprio (per 
+  `phase-03-videos/TD-12`).
+  +... Nenhuma outra transição existe nesta fase. Rascunho abortado é 
+  **removido** (linha apagada), não ganha estado próprio (per 
+  `phase-03-videos/TD-12`). Rascunho cujo objeto final diverge de `size_bytes` 
+  no `complete` (`UPLOAD_SIZE_MISMATCH`) recebe o mesmo destino: objeto e linha 
+  apagados, sem passar por `processing` nem `failed` (per 
+  `phase-03-videos/TD-03`, `phase-03-videos/TD-12`).
+
+  @@ -136 (API Contracts → POST /videos/:id/upload/complete) @@
+  -Conclui o multipart (`CompleteMultipartUploadCommand` com as `Parts` 
+  ordenadas ascendentemente por `PartNumber`), passa o vídeo para `processing`, 
+  zera `upload_id` e publica o job `process-video` na fila `videos` (ver `### 
+  Events/Messages`), per `phase-03-videos/TD-03`, `phase-03-videos/TD-09`, 
+  `phase-03-videos/TD-01`. **Idempotente:** se o vídeo já está em `processing`, 
+  `ready` ou `failed`, responde 200 com o estado atual, sem chamar o storage e 
+  sem enfileirar de novo.
+  +Só aceita vídeo em `draft`. Sequência (per `phase-03-videos/TD-03`, 
+  `phase-03-videos/TD-09`, `phase-03-videos/TD-01`):
+  +1. Conclui o multipart (`CompleteMultipartUploadCommand` com as `Parts` 
+  ordenadas ascendentemente por `PartNumber`).
+  +2. Confere o tamanho real do objeto com `HeadObjectCommand` (`ContentLength`)
+  contra `size_bytes`. Se divergir (maior **ou** menor): apaga o objeto 
+  (`DeleteObjectCommand`), apaga a linha do rascunho e responde 400 
+  `UPLOAD_SIZE_MISMATCH`; **nenhum job é enfileirado**. Isso impede burlar o 
+  limite de 10GB declarando um tamanho menor.
+  +3. Só se o tamanho bater: passa o vídeo para `processing` e zera `upload_id` 
+  numa atualização condicional (`WHERE status = 'draft'`), e então publica o job
+  `process-video` na fila `videos` (ver `### Events/Messages`).
+  +**Idempotente nos efeitos:** se o vídeo já saiu de `draft` (`processing`, 
+  `ready` ou `failed`, por exemplo num `complete` repetido), responde 409 
+  `VIDEO_NOT_IN_DRAFT`, sem chamar o storage, sem alterar o status e sem 
+  enfileirar de novo. É o mesmo padrão do abort (per `phase-03-videos/TD-12`).
+
+  @@ -148 (Response 200) @@
+  -- status: `"processing"` (ou o status atual, na chamada idempotente)
+  +- status: `"processing"`
+
+  @@ -151..154 (Error responses) @@
+   - 400 VALIDATION_ERROR: corpo fora do schema
+   - 400 INVALID_UPLOAD_PARTS: o storage rejeitou a lista de partes (parte
+  ausente, `etag` divergente, número de partes diferente de `part_count`); o
+  vídeo continua em `draft` e o cliente pode retomar
+  +- 400 UPLOAD_SIZE_MISMATCH: o tamanho real do objeto (`HeadObject`) diverge 
+  de `size_bytes`; objeto e rascunho são apagados, nenhum job é enfileirado e o 
+  cliente precisa recomeçar com `POST /videos`
+   - 401 Unauthorized: sem token ou token inválido
+   - 404 VIDEO_NOT_FOUND: o vídeo não existe ou não pertence ao canal do usuário
+  +- 409 VIDEO_NOT_IN_DRAFT: o vídeo já saiu de `draft` (ex.: `complete` 
+  repetido); nada é reenfileirado
+
+  @@ -261..263 (Error Catalog) @@
+  -| VIDEO_NOT_IN_DRAFT | 409 | Gerar/listar URLs de parte ou abortar um vídeo 
+  que já saiu de `draft` |
+  +| VIDEO_NOT_IN_DRAFT | 409 | Gerar/listar URLs de parte, concluir (`complete`
+  repetido) ou abortar um vídeo que já saiu de `draft`; no `complete`, nada é 
+  reenfileirado |
+   | INVALID_PART_NUMBER | 400 | `part_numbers` com item maior que o
+  `part_count` do vídeo |
+   | INVALID_UPLOAD_PARTS | 400 | O storage rejeitou o `CompleteMultipartUpload`
+  (`InvalidPart` / `InvalidPartOrder` / parte ausente); o vídeo continua em
+  `draft` |
+  +| UPLOAD_SIZE_MISMATCH | 400 | No `complete`, o `ContentLength` do 
+  `HeadObject` diverge de `size_bytes`; objeto e rascunho são apagados e nenhum 
+  job é enfileirado |
+
+  @@ -282 (Events/Messages → Trigger) @@
+  -**Trigger:** transição `draft → processing` no `complete` do upload.
+  +**Trigger:** transição `draft → processing` no `complete` do upload, só 
+  depois de o `HeadObject` confirmar que o tamanho real bate com `size_bytes`. 
+  Com `UPLOAD_SIZE_MISMATCH` ou `VIDEO_NOT_IN_DRAFT`, nenhum job é publicado.
+
+  Achei mais uma divergência e deixei fora deste diff: o backoff da
+  Events/Messages usa delay: 1000 (veio do exemplo do library-refs.md), mas a
+  TD-10 sugere "30s de base", também como sugestão sem origem normativa. Se
+  quiser alinhar com a TD, eu troco para delay: 30000 à parte.
+
+  Posso aplicar o diff?
+
+✻ Brewed for 1m 6s · done 5:42 PM
+
+❯ sim                                                                           
+
+● Update(docs/phases/phase-03-videos/phase-03-videos.md)
+  ⎿  Added 1 line, removed 1 line
+      53 
+      54  **Relations:** `Channel` has many `Video` (one-to-many; `Video.
+          channel_id` → `Channel.id`). O dono do vídeo é o `User` dono do
+           `Channel` (`channels.user_id`).
+      55  **Indexes:** unique on `public_id`; index on `channel_id`.
+      56 -**Transições de status (per `phase-03-videos/TD-09`, `phase-03-
+         -videos/TD-10`):** `draft → processing` (no `complete` do upload
+         -, pela API) · `processing → ready` (worker, após metadados + th
+         -umbnail gravados) · `processing → failed` (handler de falha fin
+         -al do worker: `UnrecoverableError` ou tentativas esgotadas). Ne
+         -nhuma outra transição existe nesta fase. Rascunho abortado é **
+         -removido** (linha apagada), não ganha estado próprio (per `phas
+         -e-03-videos/TD-12`).                                           
+      56 +**Transições de status (per `phase-03-videos/TD-09`, `phase-03-
+         +videos/TD-10`):** `draft → processing` (no `complete` do upload
+         +, pela API) · `processing → ready` (worker, após metadados + th
+         +umbnail gravados) · `processing → failed` (handler de falha fin
+         +al do worker: `UnrecoverableError` ou tentativas esgotadas). Ne
+         +nhuma outra transição existe nesta fase. Rascunho abortado é **
+         +removido** (linha apagada), não ganha estado próprio (per `phas
+         +e-03-videos/TD-12`). Rascunho cujo objeto final diverge de `siz
+         +e_bytes` no `complete` (`UPLOAD_SIZE_MISMATCH`) recebe o mesmo 
+         +destino: objeto e linha apagados, sem passar por `processing` n
+         +em `failed` (per `phase-03-videos/TD-03`, `phase-03-videos/TD-1
+         +2`).                                                           
+      57  **Migration:** nova migration TypeORM cria o enum `video_status
+          `, a tabela `videos`, o índice único em `public_id`, o índice e
+          m `channel_id` e a FK para `channels` (`synchronize: false` her
+          dado da Fase 01).
+      58 
+      59  ### API Contracts
+
+● Update(docs/phases/phase-03-videos/phase-03-videos.md)
+  ⎿  Added 5 lines, removed 1 line
+      133 
+      134  #### POST /videos/:id/upload/complete (SI-03.7)
+      135 
+      136 -Conclui o multipart (`CompleteMultipartUploadCommand` com as `
+          -Parts` ordenadas ascendentemente por `PartNumber`), passa o ví
+          -deo para `processing`, zera `upload_id` e publica o job `proce
+          -ss-video` na fila `videos` (ver `### Events/Messages`), per `p
+          -hase-03-videos/TD-03`, `phase-03-videos/TD-09`, `phase-03-vide
+          -os/TD-01`. **Idempotente:** se o vídeo já está em `processing`
+          -, `ready` ou `failed`, responde 200 com o estado atual, sem ch
+          -amar o storage e sem enfileirar de novo.                      
+      136 +Só aceita vídeo em `draft`. Sequência (per `phase-03-videos/TD
+          +-03`, `phase-03-videos/TD-09`, `phase-03-videos/TD-01`):      
+      137 +1. Conclui o multipart (`CompleteMultipartUploadCommand` com a
+          +s `Parts` ordenadas ascendentemente por `PartNumber`).        
+      138 +2. Confere o tamanho real do objeto com `HeadObjectCommand` (`
+          +ContentLength`) contra `size_bytes`. Se divergir (maior **ou**
+          + menor): apaga o objeto (`DeleteObjectCommand`), apaga a linha
+          + do rascunho e responde 400 `UPLOAD_SIZE_MISMATCH`; **nenhum j
+          +ob é enfileirado**. Isso impede burlar o limite de 10GB declar
+          +ando um tamanho menor.                                        
+      139 +3. Só se o tamanho bater: passa o vídeo para `processing` e ze
+          +ra `upload_id` numa atualização condicional (`WHERE status = '
+          +draft'`), e então publica o job `process-video` na fila `video
+          +s` (ver `### Events/Messages`).                               
+      140 +**Idempotente nos efeitos:** se o vídeo já saiu de `draft` (`p
+          +rocessing`, `ready` ou `failed`, por exemplo num `complete` re
+          +petido), responde 409 `VIDEO_NOT_IN_DRAFT`, sem chamar o stora
+          +ge, sem alterar o status e sem enfileirar de novo. É o mesmo p
+          +adrão do abort (per `phase-03-videos/TD-12`).                 
+      141 
+      142  **Request headers:**
+      143  - Content-Type: application/json
+
+● Update(docs/phases/phase-03-videos/phase-03-videos.md)
+  ⎿  Added 1 line, removed 1 line
+      149  **Response 200:**
+      150  - id: string (uuid)
+      151  - public_id: string
+      152 -- status: `"processing"` (ou o status atual, na chamada idempo
+          -tente)                                                        
+      152 +- status: `"processing"`                                      
+      153 
+      154  **Error responses:**
+      155  - 400 VALIDATION_ERROR: corpo fora do schema
+
+● Update(docs/phases/phase-03-videos/phase-03-videos.md)
+  ⎿  Added 2 lines
+      154  **Error responses:**
+      155  - 400 VALIDATION_ERROR: corpo fora do schema
+      156  - 400 INVALID_UPLOAD_PARTS: o storage rejeitou a lista de part
+           es (parte ausente, `etag` divergente, número de partes diferen
+           te de `part_count`); o vídeo continua em `draft` e o cliente p
+           ode retomar
+      157 +- 400 UPLOAD_SIZE_MISMATCH: o tamanho real do objeto (`HeadObj
+          +ect`) diverge de `size_bytes`; objeto e rascunho são apagados,
+          + nenhum job é enfileirado e o cliente precisa recomeçar com `P
+          +OST /videos`                                                  
+      158  - 401 Unauthorized: sem token ou token inválido
+      159  - 404 VIDEO_NOT_FOUND: o vídeo não existe ou não pertence ao c
+           anal do usuário
+      160 +- 409 VIDEO_NOT_IN_DRAFT: o vídeo já saiu de `draft` (ex.: `co
+          +mplete` repetido); nada é reenfileirado                       
+      161 
+      162  ---
+      163 
+
+● Update(docs/phases/phase-03-videos/phase-03-videos.md)
+  ⎿  Added 1 line, removed 1 line
+      264  | VIDEO_TOO_LARGE | 413 | `POST /videos` com `size_bytes > 107
+           37418240`; nenhum rascunho é criado |
+      265  | UNSUPPORTED_VIDEO_FORMAT | 415 | `POST /videos` com `content
+           _type` ou extensão de `file_name` fora da allowlist; nenhum ra
+           scunho é criado |
+      266  | VIDEO_NOT_FOUND | 404 | Vídeo inexistente ou de outro canal
+           (rotas do dono); `publicId` inexistente ou vídeo fora de `read
+           y` (stream/download) |
+      267 -| VIDEO_NOT_IN_DRAFT | 409 | Gerar/listar URLs de parte ou abo
+          -rtar um vídeo que já saiu de `draft` |                        
+      267 +| VIDEO_NOT_IN_DRAFT | 409 | Gerar/listar URLs de parte, concl
+          +uir (`complete` repetido) ou abortar um vídeo que já saiu de `
+          +draft`; no `complete`, nada é reenfileirado |                 
+      268  | INVALID_PART_NUMBER | 400 | `part_numbers` com item maior qu
+           e o `part_count` do vídeo |
+      269  | INVALID_UPLOAD_PARTS | 400 | O storage rejeitou o `CompleteM
+           ultipartUpload` (`InvalidPart` / `InvalidPartOrder` / parte au
+           sente); o vídeo continua em `draft` |
+      270  | VALIDATION_ERROR | 400 | Herdado — corpo ou parâmetro fora d
+           o schema (`ValidationExceptionFilter`) |
+
+● Update(docs/phases/phase-03-videos/phase-03-videos.md)
+  ⎿  Added 1 line
+      267  | VIDEO_NOT_IN_DRAFT | 409 | Gerar/listar URLs de parte, concl
+           uir (`complete` repetido) ou abortar um vídeo que já saiu de `
+           draft`; no `complete`, nada é reenfileirado |
+      268  | INVALID_PART_NUMBER | 400 | `part_numbers` com item maior qu
+           e o `part_count` do vídeo |
+      269  | INVALID_UPLOAD_PARTS | 400 | O storage rejeitou o `CompleteM
+           ultipartUpload` (`InvalidPart` / `InvalidPartOrder` / parte au
+           sente); o vídeo continua em `draft` |
+      270 +| UPLOAD_SIZE_MISMATCH | 400 | No `complete`, o `ContentLength
+          +` do `HeadObject` diverge de `size_bytes`; objeto e rascunho s
+          +ão apagados e nenhum job é enfileirado |                      
+      271  | VALIDATION_ERROR | 400 | Herdado — corpo ou parâmetro fora d
+           o schema (`ValidationExceptionFilter`) |
+      272 
+      273  Erros do worker não viram resposta HTTP. Arquivo que o `ffprob
+           e` rejeita (sem stream de vídeo, ilegível) → `UnrecoverableErr
+           or` → `status = failed` + `failure_reason`, sem retry. Falhas
+           transitórias (storage/Redis indisponível, timeout do FFmpeg) →
+            exceção comum → retry pela fila; depois de 3 tentativas → `fa
+           iled` (per `phase-03-videos/TD-10`, `phase-03-videos/TD-11`).
+
+● Update(docs/phases/phase-03-videos/phase-03-videos.md)
+  ⎿  Added 1 line, removed 1 line
+      286 
+      287  **Producer:** `VideoProcessingQueue` (serviço produtor injetad
+           o com `@InjectQueue('videos')`), chamado pelo `VideosService`
+           no `POST /videos/:id/upload/complete` (per `phase-03-videos/TD
+           -03`, `phase-03-videos/TD-01`)
+      288  **Consumer:** `VideoProcessor` (`@Processor('videos')`, estend
+           e `WorkerHost`), que roda **só** no entrypoint do worker (`src
+           /worker.main.ts` + `WorkerModule`, container `video-worker`, p
+           er `phase-03-videos/TD-04`). O `AppModule` da API registra a f
+           ila só como produtora.
+      289 -**Trigger:** transição `draft → processing` no `complete` do u
+          -pload.                                                        
+      289 +**Trigger:** transição `draft → processing` no `complete` do u
+          +pload, só depois de o `HeadObject` confirmar que o tamanho rea
+          +l bate com `size_bytes`. Com `UPLOAD_SIZE_MISMATCH` ou `VIDEO_
+          +NOT_IN_DRAFT`, nenhum job é publicado.                        
+      290  **Processamento** (per `phase-03-videos/TD-05`, `phase-03-vide
+           os/TD-06`, `phase-03-videos/TD-11`):
+      291  1. Carrega o vídeo. Se não existe ou não está em `processing`,
+            encerra sem erro (no-op idempotente).
+      292  2. Gera uma URL GET pré-assinada com o **cliente interno** (`S
+           3_ENDPOINT`, `expiresIn` 900s).
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Apliquei o diff completo em docs/phases/phase-03-videos/phase-03-videos.md. O
+  que mudou:
+
+  - Data Model, transições de status: quando o tamanho real diverge do declarado
+    no complete, o objeto e a linha do rascunho são apagados, como no abort. O
+    vídeo não passa por processing nem por failed.
+  - POST /videos/:id/upload/complete:
+    - A sequência agora é: CompleteMultipartUpload → HeadObject compara o
+      tamanho com size_bytes → só então muda para processing, com atualização
+      condicional WHERE status = 'draft', e enfileira o job.
+    - A resposta 200 agora devolve só "processing".
+    - Entraram os erros 400 UPLOAD_SIZE_MISMATCH e 409 VIDEO_NOT_IN_DRAFT.
+  - Error Catalog: o trigger de VIDEO_NOT_IN_DRAFT agora inclui o complete
+    repetido, e há uma linha nova para UPLOAD_SIZE_MISMATCH (400).
+  - Events/Messages, trigger: o job só é publicado depois de o HeadObject
+    confirmar o tamanho. Com UPLOAD_SIZE_MISMATCH ou VIDEO_NOT_IN_DRAFT, nenhum
+    job é publicado.
+
+  Depois de salvar, conferi: UPLOAD_SIZE_MISMATCH aparece nos 5 pontos esperados
+  e não sobrou nada do texto antigo ("responde 200 com o estado atual"). Os
+  dois marcadores da Fase A continuam no arquivo, então rodar /plan-build 
+  phase-03-videos de novo segue direto para a Fase B.
+
+  Uma coisa ficou como estava: o delay: 1000 do backoff. A TD-10 sugere 30s de
+  base. Se quiser alinhar, eu troco para delay: 30000.
+
+✻ Cooked for 24s · done 5:51 PM
+
+❯ Sobre o backoff: alinhe com a TD-10 — padrão delay: 30000 (30s), mas          
+  configurável por variável de ambiente (ex.: QUEUE_BACKOFF_DELAY_MS, validada  
+  no schema Joi como as demais), para que os testes usem um valor curto.        
+  Registre o valor padrão e a variável como sugestão sem origem normativa,      
+  citando a TD-10. Mostre o diff antes de salvar. Responda em português.        
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+● A mudança cabe numa única linha, a 296 (Events/Messages → Job options). Este é
+  o diff proposto. Ainda não salvei nada.
+
+  @@ -296 (Events/Messages → Job options) @@
+  -**Job options** (per `phase-03-videos/TD-10`): `attempts: 3`, `backoff: { 
+  type: 'exponential', delay: 1000 }` (`delay` _sugestão — sem origem 
+  normativa_), `jobId: videoId` (deduplica reenvio), `removeOnComplete: true`.
+  +**Job options** (per `phase-03-videos/TD-10`): `attempts: 3`, `backoff: { 
+  type: 'exponential', delay: <QUEUE_BACKOFF_DELAY_MS> }`, `jobId: videoId` 
+  (deduplica reenvio), `removeOnComplete: true`.
+  +**Backoff configurável** (per `phase-03-videos/TD-10`; valor padrão e 
+  variável _sugestão — sem origem normativa_): o `delay` base vem de 
+  `QUEUE_BACKOFF_DELAY_MS`, lido pelo namespace `registerAs('queue', ...)` e 
+  validado no schema Joi de `src/config/env.validation.ts` como as demais chaves
+  (`Joi.number().integer().min(0).default(30000)`). O padrão é `30000` (30s, a 
+  base sugerida pela TD-10). Com backoff exponencial (`2^(attemptsMade-1) × 
+  delay`), as novas tentativas acontecem cerca de 30s e 60s depois da falha 
+  anterior. Os testes de integração e E2E definem um valor curto (ex.: `100`) 
+  para não esperar 90s até a falha final. A chave entra no `.env.example` com o 
+  padrão `30000`.
+
+  O texto não diz como a suíte vai injetar o valor curto (.env de teste,
+  process.env antes de compilar o módulo etc.). Isso fica para a SI de testes da
+  Fase B.
+
+  Posso aplicar?
+
+✻ Cooked for 18s · done 5:54 PM
+
+❯ sim                                                                           
+
+● Update(docs/phases/phase-03-videos/phase-03-videos.md)
+  ⎿  Added 2 lines, removed 1 line
+      293  3. Roda `ffprobe` (via `execFile`) sobre a URL e extrai `durat
+           ion_seconds` + `metadata`. Sem stream de vídeo ou saída ilegív
+           el → `UnrecoverableError`.
+      294  4. Extrai 1 frame com `ffmpeg` (via `execFile`, seek por HTTP
+           range até ~10% da duração, _sugestão — sem origem normativa_)
+           para um JPEG temporário e envia para `videos/{videoId}/thumbna
+           il.jpg` pelo cliente interno.
+      295  5. Em uma única atualização grava `duration_seconds`, `metadat
+           a`, `thumbnail_key` e `status = ready`.
+      296 -**Job options** (per `phase-03-videos/TD-10`): `attempts: 3`, 
+          -`backoff: { type: 'exponential', delay: 1000 }` (`delay` _suge
+          -stão — sem origem normativa_), `jobId: videoId` (deduplica ree
+          -nvio), `removeOnComplete: true`.                              
+      296 +**Job options** (per `phase-03-videos/TD-10`): `attempts: 3`, 
+          +`backoff: { type: 'exponential', delay: <QUEUE_BACKOFF_DELAY_M
+          +S> }`, `jobId: videoId` (deduplica reenvio), `removeOnComplete
+          +: true`.                                                      
+      297 +**Backoff configurável** (per `phase-03-videos/TD-10`; valor p
+          +adrão e variável _sugestão — sem origem normativa_): o `delay`
+          + base vem de `QUEUE_BACKOFF_DELAY_MS`, lido pelo namespace `re
+          +gisterAs('queue', ...)` e validado no schema Joi de `src/confi
+          +g/env.validation.ts` como as demais chaves (`Joi.number().inte
+          +ger().min(0).default(30000)`). O padrão é `30000` (30s, a base
+          + sugerida pela TD-10). Com backoff exponencial (`2^(attemptsMa
+          +de-1) × delay`), as novas tentativas acontecem cerca de 30s e 
+          +60s depois da falha anterior. Os testes de integração e E2E de
+          +finem um valor curto (ex.: `100`) para não esperar 90s até a f
+          +alha final. A chave entra no `.env.example` com o padrão `3000
+          +0`.                                                           
+      298  **Falha final** (per `phase-03-videos/TD-10`): `@OnWorkerEvent
+           ('failed')`. Quando `err instanceof UnrecoverableError` **ou**
+            `job.attemptsMade >= job.opts.attempts`, grava `status = fail
+           ed` e `failure_reason = err.message`. Falhas intermediárias nã
+           o mudam o status (continua `processing`).
+      299  **Delivery semantics:** at-least-once (per `phase-03-videos/TD
+           -01`). O processor é idempotente: reprocessar sobrescreve os m
+           esmos campos e a mesma chave de thumbnail.
+      300 
+
+● Salvei a mudança em docs/phases/phase-03-videos/phase-03-videos.md
+  (Events/Messages → Job options):
+
+  - Delay vindo do ambiente: o delay do backoff agora vem de
+    QUEUE_BACKOFF_DELAY_MS. O namespace queue lê a variável e o schema Joi a
+    valida, com padrão 30000 (30s).
+  - Origem registrada: o padrão e a variável estão marcados como sugestão sem
+    origem normativa, citando a TD-10.
+  - Testes: os testes de integração e E2E usam um valor curto (ex.: 100), e a
+    chave entra no .env.example com o padrão 30000.
+
+  Os dois marcadores da Fase A continuam no arquivo. Para escrever as Step
+  Implementations, o Dependency Map e os Deliverables, rode /plan-build 
+  phase-03-videos de novo, e ele segue direto para a Fase B.
+
+✻ Cooked for 13s · done 5:56 PM
+
+❯ Commite docs/phases/phase-03-videos/phase-03-videos.md com a mensagem "docs:  
+  phase 03 plan — technical specs (phase A)" e faça push.                       
+
+  Pushed to feature/phase-03-videos (ctrl+o to expand)
+
+● Commit 4c3599b ("docs: phase 03 plan — technical specs (phase A)") está na
+  branch feature/phase-03-videos e o push para o origin funcionou.
+
+  O commit leva só docs/phases/phase-03-videos/phase-03-videos.md. O arquivo
+  _claude-sessions/21-fase03-validate-clean.txt continua fora do controle de
+  versão, como já estava.
+
+✻ Cooked for 11s · done 5:57 PM

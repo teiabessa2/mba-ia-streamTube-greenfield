@@ -32,8 +32,12 @@ docker compose exec nestjs-api npm run start:dev
 ```
 
 Services:
-- `nestjs-api` — NestJS API, port `3000`
+- `nestjs-api` — NestJS API, port `3000` (container idles with `tail -f /dev/null`; the server only runs via `start:dev`)
+- `video-worker` — video processing worker; starts `npm run start:worker:dev` automatically (watch mode)
 - `db` — PostgreSQL 17, port `5432`, database `streamtube`, user/password `streamtube`
+- `mailpit` — SMTP `1025`, web UI `8025`
+- `redis` — Redis 7, port `6379` (BullMQ)
+- `minio` — S3 API `9000`, console `9001` (bucket `S3_BUCKET`, created on boot)
 
 All verification and teardown commands run on the **host machine**:
 
@@ -155,6 +159,67 @@ NestJS with standard module structure. Source lives in `src/`, compiled output i
 - **Decorators:** `emitDecoratorMetadata` + `experimentalDecorators` enabled — required for NestJS DI
 - **Prettier:** single quotes, trailing commas everywhere
 - **ESLint:** `no-explicit-any` allowed; `no-floating-promises` and `no-unsafe-argument` are warnings
+
+## Video Pipeline (Phase 03)
+
+Details: `docs/phases/phase-03-videos/` (plan + progress) and `docs/decisions/technical-decisions-phase-03-videos.md`.
+
+### Modules
+
+| Module | Role |
+|--------|------|
+| `src/storage` | `StorageService`: every object-storage call (multipart, HEAD, delete, put) and presigned URLs. Ensures the bucket on boot |
+| `src/videos` | `Video` entity, `VideosController` / `VideosService` (upload, owner detail, playback), `VideoProcessingQueue` (producer) |
+| `src/queue` | `BullModule` connection (`queue` config) and the `videos` queue; shared by API and worker |
+| `src/media` | `MediaService`: thin `ffprobe`/`ffmpeg` wrapper over HTTP range reads; redacts presigned URLs from errors |
+| `src/worker` | `WorkerModule` + `VideoProcessor` (`@Processor('videos')`); loaded only by `src/worker.main.ts`, never by `AppModule` |
+
+### Flows
+
+- **Upload** (the API never receives video bytes):
+  1. `POST /videos` creates a `draft` and opens an S3 multipart upload.
+  2. `POST /videos/:id/upload/parts` returns presigned PUT URLs. The client sends the parts straight to MinIO. `GET /videos/:id/upload/parts` lists them to resume.
+  3. `POST /videos/:id/upload/complete` → `processing` + job `process-video` on the `videos` queue. `DELETE /videos/:id/upload` aborts the draft.
+  4. The worker runs `ffprobe` + a thumbnail frame → `ready`, or → `failed` with `failure_reason`.
+- **Playback** (public, `ready` only, otherwise 404): `GET /videos/:publicId/stream` and `/download` only answer `302` with a presigned GET URL in `Location`. The client then reads from **MinIO** through that URL, and MinIO answers `Range` requests with `206`.
+- **The API never receives or serves video bytes**, neither on upload nor on playback. It only exchanges JSON and redirects.
+- **Status:** `draft → processing → ready | failed`. The owner follows it with `GET /videos/:id`.
+
+### Conventions
+
+- **Two S3 clients:**
+  - `S3_INTERNAL_CLIENT` (`S3_ENDPOINT`, `minio:9000`) carries all real traffic.
+  - `S3_PUBLIC_CLIENT` (`S3_PUBLIC_ENDPOINT`) only **signs** URLs handed to consumers outside the Compose network.
+  - The worker reads through `presignInternalGet` (internal client).
+- **`public_id`:** 11 characters, base64url of 8 random bytes (`src/videos/public-id.util.ts`). It is the unique URL id; the uuid `id` stays internal to owner routes.
+- **`title`:** optional on `POST /videos`, trimmed, 1–100 characters. When absent, `deriveVideoTitle(file_name)` (`src/videos/video-title.util.ts`) derives it.
+- **Worker build:** `tsconfig.worker.json` builds to `dist-worker/`. The API and the worker share the volume, and `deleteOutDir` would otherwise wipe each other's `dist/`.
+- **Root options:** `AppModule` and `WorkerModule` share `src/config/config-module.options.ts` and `src/database/typeorm-module.options.ts`.
+- **Migrations:** schema changes go in a **new** migration. Never edit an applied one (e.g. `AddVideoTitle` adds `title` on top of `CreateVideos`).
+
+### Environment variables (Phase 03)
+
+`S3_ENDPOINT`, `S3_PUBLIC_ENDPOINT`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_BUCKET`, `S3_FORCE_PATH_STYLE`, `REDIS_HOST`, `REDIS_PORT`, `QUEUE_PREFIX`, `QUEUE_BACKOFF_DELAY_MS`. They are validated in `src/config/env.validation.ts`, with dev values in `.env.example`.
+
+### Running the worker and the tests
+
+```bash
+docker compose up -d                       # also starts video-worker
+docker compose logs video-worker           # expect "Video worker started"
+docker compose exec nestjs-api npm test -- --runInBand
+docker compose exec nestjs-api npm run test:e2e -- --runInBand
+```
+
+Tests run their own BullMQ worker in-process, with a unique `QUEUE_PREFIX` per suite, so the Compose `video-worker` (prefix `streamtube`) never takes test jobs.
+
+## Known Pitfalls (Armadilhas conhecidas)
+
+- **Always `--runInBand`, with `start:dev` stopped:** suites share Postgres, Redis and MinIO.
+- **Tests and dev share the `streamtube` database:** `src/database/migrations.integration-spec.ts` recreates the schema, so **dev data is wiped** on every `npm test`. A dev DB with rows and a pending migration can make `synchronize` fail on a new `NOT NULL` column. Run `npm run migration:run` first. A separate test database is a recorded follow-up.
+- **Presigned URLs inside the container:** use `requestPresigned` from `src/test/presigned-http.ts`. Public URLs point at `localhost:9000`, which is the container itself, and SigV4 signs the `Host` header. The helper connects to `S3_ENDPOINT` and keeps the original `Host`. Never `fetch` a presigned URL directly in tests.
+- **`ioredis` is an explicit dependency:** in `bullmq@6` it is an optional peer. Without it the queue fails to load.
+- **FFmpeg/ffprobe come from `Dockerfile.dev`** (apt). Rebuild the image (`docker compose up -d --build`) after changing it.
+- **A video can stay in `processing`:** if `enqueue` fails after the `UPDATE` to `processing`, there is no job for it. Reconciliation is a future task.
 
 ## REST Conventions
 

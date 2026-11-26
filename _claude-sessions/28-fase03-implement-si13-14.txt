@@ -1,0 +1,1403 @@
+ ▐▛███▛█   Claude Code v2.1.332
+▝▜██████▀  Opus 5.5 · Claude Pro
+ ▝▝   ▝▝   ~/mbaengsoft/mba-ia-streamTube-greenfield
+
+
+❯ Retomando a implementação da Fase 03. Leia                                    
+  docs/phases/phase-03-videos/progress.md: os SIs 03.1 a 03.12 estão            
+  concluídos; faltam o 03.13 e o 03.14. Regras: npm test -- --runInBand e npm   
+  run test:e2e -- --runInBand dentro do container nestjs-api, com start:dev     
+  parado; um commit por SI na feature/phase-03-videos (confira a branch antes), 
+  nunca em main/dev; ao fim de cada SI, pare, mostre os testes e aguarde meu    
+  ok; o push é feito por mim; nunca rode docker compose down -v, git reset,     
+  checkout de outra branch, rm -rf nem altere arquivos fora do escopo do SI sem 
+  perguntar; consulte o context7 antes de usar libs. Responda em português.     
+  Comece confirmando o próximo SI.                                              
+
+  Listed 1 directory, ran 2 shell commands (ctrl+o to expand)
+
+● Branch confirmada: feature/phase-03-videos, working tree limpo. Próximo SI:
+  SI-03.13 — Endpoints públicos de streaming e download (302 pré-assinado). Vou
+  começar por ele.
+
+● Skill(testing-guide-nestjs-project)
+  ⎿  Loaded skill
+
+● Skill(nestjs-best-practices)
+  ⎿  Loaded skill
+
+  Searched for 1 pattern, read 1 file, ran 3 shell commands (ctrl+o to expand)
+
+● Li o plano, a spec do SI-03.13 e o código atual; agora vou consultar o
+  context7 sobre @Redirect dinâmico no NestJS e headers de resposta no
+  @nestjs/swagger. · summary
+
+  Called context7 2 times (ctrl+o to expand)
+
+● Ambas as APIs são compatíveis com as versões instaladas, e vou checar como as
+  rotas públicas aparecem no OpenAPI antes de escrever os testes. · summary
+
+  Searched for 2 patterns, ran 3 shell commands (ctrl+o to expand)
+
+● Vou mover o @ApiBearerAuth para cada rota do dono no videos.controller.ts,
+  para que as rotas públicas apareçam sem cadeado no OpenAPI. Depois disso, vejo
+  os padrões das suítes existentes antes de escrever os testes. · summary
+
+  Ran 3 shell commands (ctrl+o to expand)
+  ⎿  Loaded CLAUDE.md
+  ⎿  Loaded ../.claude/rules/typescript-strict.md
+  ⎿  Loaded ../.claude/rules/nestjs-testing.md
+  ⎿  Loaded ../.claude/rules/nestjs-common-conventions.md
+
+● Agora vou implementar o código: constantes, tipo, validação do formato do
+  public_id, os métodos do service e as rotas do controller.
+
+  Read 1 file (ctrl+o to expand)
+
+● Bash(cat >> src/videos/videos.types.ts <<'EOF'…)
+  ⎿  import { generatePublicId } from './public-id.util';
+
+     describe('generatePublicId', () => {
+     … +14 lines (ctrl+o to expand)
+  ⎿  Updated nestjs-project/src/videos/public-id.util.ts +8
+       2 
+       3  const PUBLIC_ID_BYTES = 8;
+       4 
+       5 +/** Base64url of `PUBLIC_ID_BYTES` bytes: always 11 characters,
+         + no padding. */                                                
+       6 +const PUBLIC_ID_FORMAT = /^[A-Za-z0-9_-]{11}$/;                
+       7 +                                                               
+       8  /**
+       9   * Short, non-enumerable public video id: 8 random bytes in bas
+          e64url
+      10   * (11 characters, `[A-Za-z0-9_-]`), per phase-03-videos/TD-07.
+     ...
+      12  export function generatePublicId(): string {
+      13    return randomBytes(PUBLIC_ID_BYTES).toString('base64url');
+      14  }
+      15 +                                                               
+      16 +/** Whether `value` has the shape produced by `generatePublicId
+         +`. */                                                          
+      17 +export function isPublicIdFormat(value: string): boolean {     
+      18 +  return PUBLIC_ID_FORMAT.test(value);                         
+      19 +}                                                              
+  ⎿  Updated nestjs-project/src/videos/videos.constants.ts +6
+      40    /** Lifetime of the presigned thumbnail GET URL, in seconds (
+          phase-03-videos/TD-02). */
+      41    THUMBNAIL_URL_EXPIRES_IN_S: 3600,
+      42  } as const;
+      43 +                                                               
+      44 +/** Public playback (`GET /videos/:publicId/stream|download`). 
+         +*/                                                             
+      45 +export const VIDEO_PLAYBACK = {                                
+      46 +  /** Lifetime of the presigned stream/download GET URL, in sec
+         +onds (phase-03-videos/TD-08). */                               
+      47 +  URL_EXPIRES_IN_S: 3600,                                      
+      48 +} as const;                                                    
+  ⎿  Updated nestjs-project/src/videos/videos.types.ts +3
+      21  export interface ProcessVideoJobData {
+      22    videoId: string;
+      23  }
+      24 +                                                               
+      25 +/** How a ready video is delivered by the public playback route
+         +s (TD-08). */                                                  
+      26 +export type PlaybackMode = 'stream' | 'download';              
+
+● Add a unit test for isPublicIdFormat:
+
+● Bash(cat > src/videos/public-id.util.spec.ts <<'EOF'
+      import { generatePublicId, isPublicIdFormat } from './public-id.util';…)
+  ⎿  Updated nestjs-project/src/videos/public-id.util.spec.ts +16 -1
+      1 -import { generatePublicId } from './public-id.util';            
+      1 +import { generatePublicId, isPublicIdFormat } from './public-id.
+        +util';                                                          
+      2 
+      3  describe('generatePublicId', () => {
+      4    it('should return 11 characters from the base64url alphabet',
+         () => {
+     ...
+      13      expect(ids.size).toBe(10_000);
+      14    });
+      15  });
+      16 +                                                               
+      17 +describe('isPublicIdFormat', () => {                           
+      18 +  it('should accept every generated id', () => {               
+      19 +    for (let i = 0; i < 1_000; i++) {                          
+      20 +      expect(isPublicIdFormat(generatePublicId())).toBe(true); 
+      21 +    }                                                          
+      22 +  });                                                          
+      23 +                                                               
+      24 +  it.each(['x', 'AAAAAAAAAA', 'AAAAAAAAAAAA', 'AAAAAAAAAA=', 'A
+         +AAAA/AAAAA', ''])(                                             
+      25 +    'should reject %p',                                        
+      26 +    (value) => {                                               
+      27 +      expect(isPublicIdFormat(value)).toBe(false);             
+      28 +    },                                                         
+      29 +  );                                                           
+      30 +});                                                            
+
+● Now the service methods:
+
+● Update(nestjs-project/src/videos/videos.service.ts)
+  ⎿  Added 31 lines
+      158      return VideoResponseDto.from(video, thumbnailUrl);
+      159    }
+      160 
+      161 +  /**                                                         
+      162 +   * Loads a video by its public id, only when `ready`. A miss
+          +ing id, a                                                     
+      163 +   * malformed one and a video in any other status give the sa
+          +me not found,                                                 
+      164 +   * for any caller (phase-03-videos/TD-08 revisão 2026-11-23,
+          + TD-07).                                                      
+      165 +   */                                                         
+      166 +  async findReadyByPublicId(publicId: string): Promise<Video> 
+          +{                                                             
+      167 +    const video = isPublicIdFormat(publicId)                  
+      168 +      ? await this.videoRepository.findOne({                  
+      169 +          where: { public_id: publicId, status: VideoStatus.RE
+          +ADY },                                                        
+      170 +        })                                                    
+      171 +      : null;                                                 
+      172 +    if (!video) throw new VideoNotFoundException();           
+      173 +    return video;                                             
+      174 +  }                                                           
+      175 +                                                              
+      176 +  /**                                                         
+      177 +   * Presigned GET (public client) for the original object of 
+          +a ready video.                                                
+      178 +   * `download` adds `Content-Disposition: attachment` with th
+          +e original file                                               
+      179 +   * name; the storage serves `Range` natively for `stream` (T
+          +D-08, TD-02).                                                 
+      180 +   */                                                         
+      181 +  async getPlaybackUrl(publicId: string, mode: PlaybackMode): 
+          +Promise<string> {                                             
+      182 +    const video = await this.findReadyByPublicId(publicId);   
+      183 +    return this.storageService.presignGet(video.storage_key, {
+      184 +      expiresIn: VIDEO_PLAYBACK.URL_EXPIRES_IN_S,             
+      185 +      contentType: video.content_type,                        
+      186 +      ...(mode === 'download' && {                            
+      187 +        contentDisposition: attachmentDisposition(video.origin
+          +al_filename),                                                 
+      188 +      }),                                                     
+      189 +    });                                                       
+      190 +  }                                                           
+      191 +                                                              
+      192    /** Loads a draft (with an open multipart upload) owned by t
+           he caller. */
+      193    async findOwnedDraft(userId: string, id: string): Promise<Vi
+           deo> {
+      194      const video = await this.findOwned(userId, id);
+
+● Update(nestjs-project/src/videos/videos.service.ts)
+  ⎿  Added 10 lines
+      66    );
+      67  };
+      68 
+      69 +/**                                                            
+      70 + * `attachment; filename="..."` with the characters that would 
+         +break the                                                      
+      71 + * quoted-string removed: `"`, `\` and control characters.     
+      72 + */                                                            
+      73 +const attachmentDisposition = (fileName: string): string => {  
+      74 +  // eslint-disable-next-line no-control-regex                 
+      75 +  const safeName = fileName.replace(/["\\\u0000-\u001f\u007f]/g
+         +, '');                                                         
+      76 +  return `attachment; filename="${safeName}"`;                 
+      77 +};                                                             
+      78 +                                                               
+      79  @Injectable()
+      80  export class VideosService {
+      81    constructor(
+
+● Update(nestjs-project/src/videos/videos.service.ts)
+  ⎿  Added 2 lines, removed 2 lines
+      17  import type { UploadedPartsResponseDto } from './dto/uploaded-p
+          arts-response.dto';
+      18  import { VideoResponseDto } from './dto/video-response.dto';
+      19  import { Video } from './entities/video.entity';
+      20 -import { generatePublicId } from './public-id.util';           
+      20 +import { generatePublicId, isPublicIdFormat } from './public-id
+         +.util';                                                        
+      21  import { VideoProcessingQueue } from './video-processing.queue'
+          ;
+      22 -import { VideoStatus } from './videos.types';                  
+      22 +import { VideoStatus, type PlaybackMode } from './videos.types'
+         +;                                                              
+      23  import {
+      24    InvalidPartNumberException,
+      25    InvalidUploadPartsException,
+
+● Update(nestjs-project/src/videos/videos.service.ts)
+  ⎿  Added 1 line
+      33    PUBLIC_ID_MAX_ATTEMPTS,
+      34    VIDEO_DETAIL,
+      35    VIDEO_FORMAT_ALLOWLIST,
+      36 +  VIDEO_PLAYBACK,                                              
+      37    VIDEO_UPLOAD_LIMITS,
+      38    videoStorageKeys,
+      39  } from './videos.constants';
+  ⎿  Loaded ../.claude/rules/typeorm-queries.md
+  ⎿  Loaded ../.claude/rules/nestjs-services.md
+
+● Now the controller:
+
+● Bash(python3 - <<'EOF'
+      import re…)  ⎿  Updated nestjs-project/src/videos/videos.controller.ts +75 -1
+       8    Param,
+       9    ParseUUIDPipe,
+      10    Post,
+      11 +  Redirect,                                                    
+      12 +  type HttpRedirectResponse,                                   
+      13  } from '@nestjs/common';
+      14  import {
+      15    ApiBearerAuth,
+     ...
+      23  } from '@nestjs/swagger';
+      24  import type { JwtPayload } from '../auth/auth.types';
+      25  import { CurrentUser } from '../auth/decorators/current-user.de
+          corator';
+      26 +import { Public } from '../auth/decorators/public.decorator';  
+      27  import { ApiErrorEnvelope } from '../common/openapi/api-error-e
+          nvelope.dto';
+      28  import { CompleteUploadResponseDto } from './dto/complete-uploa
+          d-response.dto';
+      29  import { CompleteUploadDto } from './dto/complete-upload.dto';
+     ...
+      34  import { UploadedPartsResponseDto } from './dto/uploaded-parts-
+          response.dto';
+      35  import { VideoResponseDto } from './dto/video-response.dto';
+      36  import { VideosService } from './videos.service';
+      37 +import type { PlaybackMode } from './videos.types';            
+      38 +                                                               
+      39 +const PUBLIC_ID_PARAM = {                                      
+      40 +  name: 'publicId',                                            
+      41 +  description: 'Public video id (11 base64url characters)',    
+      42 +  example: 'dQw4w9WgXcQ',                                      
+      43 +} as const;                                                    
+      44 +                                                               
+      45 +const playbackResponses = (location: string): MethodDecorator[]
+         + => [                                                          
+      46 +  ApiResponse({                                                
+      47 +    status: 302,                                               
+      48 +    description: `Redirect to ${location}`,                    
+      49 +    headers: {                                                 
+      50 +      Location: {                                              
+      51 +        description: `${location} (valid for 3600s)`,          
+      52 +        schema: { type: 'string', format: 'uri' },             
+      53 +      },                                                       
+      54 +    },                                                         
+      55 +  }),                                                          
+      56 +  ApiResponse({                                                
+      57 +    status: 404,                                               
+      58 +    description:                                               
+     … +95 lines (ctrl+o to expand)
+
+● I wrote a placeholder applyAll. I'll replace it with NestJS's applyDecorators:
+
+● Bash(python3 - <<'EOF'
+      p='src/videos/videos.controller.ts'…)
+  ⎿  import {
+       applyDecorators,
+       Body,
+     … +122 lines (ctrl+o to expand)
+  ⎿  Updated nestjs-project/src/videos/public-id.util.spec.ts +10 -6
+      21      }
+      22    });
+      23 
+      24 -  it.each(['x', 'AAAAAAAAAA', 'AAAAAAAAAAAA', 'AAAAAAAAAA=', 'A
+         -AAAA/AAAAA', ''])(                                             
+      25 -    'should reject %p',                                        
+      26 -    (value) => {                                               
+      27 -      expect(isPublicIdFormat(value)).toBe(false);             
+      28 -    },                                                         
+      29 -  );                                                           
+      24 +  it.each([                                                    
+      25 +    'x',                                                       
+      26 +    'AAAAAAAAAA',                                              
+      27 +    'AAAAAAAAAAAA',                                            
+      28 +    'AAAAAAAAAA=',                                             
+      29 +    'AAAAA/AAAAA',                                             
+      30 +    '',                                                        
+      31 +  ])('should reject %p', (value) => {                          
+      32 +    expect(isPublicIdFormat(value)).toBe(false);               
+      33 +  });                                                          
+      34  });
+  ⎿  Updated nestjs-project/src/videos/videos.controller.ts +22 -19
+      1  import {
+      2 +  applyDecorators,                                              
+      3    Body,
+      4    Controller,
+      5    Delete,
+     ...
+      43    example: 'dQw4w9WgXcQ',
+      44  } as const;
+      45 
+      45 -const playbackResponses = (location: string): MethodDecorator[]
+         - => [                                                          
+      46 -  ApiResponse({                                                
+      47 -    status: 302,                                               
+      48 -    description: `Redirect to ${location}`,                    
+      49 -    headers: {                                                 
+      50 -      Location: {                                              
+      51 -        description: `${location} (valid for 3600s)`,          
+      52 -        schema: { type: 'string', format: 'uri' },             
+      46 +/** 302 with the presigned `Location` + the uniform 404 of the 
+         +playback routes. */                                            
+      47 +const ApiPlaybackResponses = (location: string) =>             
+      48 +  applyDecorators(                                             
+      49 +    ApiResponse({                                              
+      50 +      status: 302,                                             
+      51 +      description: `Redirect to ${location}`,                  
+      52 +      headers: {                                               
+      53 +        Location: {                                            
+      54 +          description: `${location} (valid for 3600s)`,        
+      55 +          schema: { type: 'string', format: 'uri' },           
+      56 +        },                                                     
+      57        },
+      54 -    },                                                         
+      55 -  }),                                                          
+      56 -  ApiResponse({                                                
+      57 -    status: 404,                                               
+      58 -    description:                                               
+      59 -      'Unknown or malformed publicId, or video not ready: draft
+         -, processing or failed (VIDEO_NOT_FOUND)',                     
+      60 -    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },         
+      61 -  }),                                                          
+      62 -];                                                             
+      58 +    }),                                                        
+      59 +    ApiResponse({                                              
+      60 +      status: 404,                                             
+     … +24 lines (ctrl+o to expand)
+
+● Agora os testes. Primeiro o unit de getPlaybackUrl:
+
+● Bash(cat >> src/videos/videos.service.spec.ts <<'EOF'…)
+  ⎿  Updated nestjs-project/src/videos/videos.service.spec.ts +115
+      556      expect(repo.delete).not.toHaveBeenCalled();
+      557    });
+      558  });
+      559 +                                                              
+      560 +describe('VideosService.findReadyByPublicId / getPlaybackUrl',
+          + () => {                                                      
+      561 +  const PUBLIC_ID = 'AbCdEfGh_-1';                            
+      562 +  const PRESIGNED = 'http://localhost:9000/streamtube/videos/v
+          +ideo-1/original?X-Amz-Signature=sig';                         
+      563 +  let service: VideosService;                                 
+      564 +  let repo: { findOne: jest.Mock };                           
+      565 +  let storage: { presignGet: jest.Mock };                     
+      566 +                                                              
+      567 +  const readyVideo = (overrides: Partial<Video> = {}): Video =
+          +>                                                             
+      568 +    ({                                                        
+      569 +      id: 'video-1',                                          
+      570 +      public_id: PUBLIC_ID,                                   
+      571 +      status: VideoStatus.READY,                              
+      572 +      storage_key: 'videos/video-1/original',                 
+      573 +      content_type: 'video/mp4',                              
+      574 +      original_filename: 'my clip.mp4',                       
+      575 +      ...overrides,                                           
+      576 +    }) as Video;                                              
+      577 +                                                              
+      578 +  beforeEach(async () => {                                    
+      579 +    repo = { findOne: jest.fn().mockResolvedValue(readyVideo()
+          +) };                                                          
+      580 +    storage = { presignGet: jest.fn().mockResolvedValue(PRESIG
+          +NED) };                                                       
+      581 +                                                              
+      582 +    const moduleRef = await Test.createTestingModule({        
+      583 +      providers: [                                            
+      584 +        VideosService,                                        
+      585 +        { provide: getRepositoryToken(Video), useValue: repo }
+          +,                                                             
+      586 +        { provide: StorageService, useValue: storage },       
+      587 +        { provide: ChannelsService, useValue: { findByUserId: 
+          +jest.fn() } },                                                
+      588 +        { provide: VideoProcessingQueue, useValue: { enqueue: 
+          +jest.fn() } },                                                
+      589 +      ],                                                      
+      590 +    }).compile();                                             
+      591 +    service = moduleRef.get(VideosService);                   
+      592 +  });                                                         
+      593 +                                                              
+      594 +  describe('findReadyByPublicId', () => {                     
+      595 +    it('should look up only ready videos by public_id', async 
+          +() => {                                                       
+     … +78 lines (ctrl+o to expand)
+
+● Now the integration test for findReadyByPublicId:
+
+● Bash(python3 - <<'EOF'
+      p='src/videos/videos.service.integration-spec.ts'…)
+  ⎿          videosService.findReadyByPublicId(generatePublicId()),
+           ).rejects.toBeInstanceOf(VideoNotFoundException);
+         });
+     … +2 lines (ctrl+o to expand)
+  ⎿  Updated nestjs-project/src/videos/videos.service.integration-spec.ts
+     +51
+      24  import { useTestQueuePrefix } from '../test/test-queue';
+      25  import { User } from '../users/entities/user.entity';
+      26  import { Video } from './entities/video.entity';
+      27 +import { generatePublicId } from './public-id.util';           
+      28  import { VideoNotFoundException } from './video.exceptions';
+      29  import { VideoProcessingQueue } from './video-processing.queue'
+          ;
+      30  import { VideosService } from './videos.service';
+     ...
+      291        ).rejects.toBeInstanceOf(VideoNotFoundException);
+      292      });
+      293    });
+      294 +                                                              
+      295 +  describe('findReadyByPublicId', () => {                     
+      296 +    /** A draft row moved straight to `status` (no multipart i
+          +s opened). */                                                 
+      297 +    const insertVideo = async (status: VideoStatus): Promise<V
+          +ideo> => {                                                    
+      298 +      const id = randomUUID();                                
+      299 +      return dataSource.getRepository(Video).save({           
+      300 +        id,                                                   
+      301 +        public_id: generatePublicId(),                        
+      302 +        channel_id: channel.id,                               
+      303 +        status,                                               
+      304 +        original_filename: 'clip.mp4',                        
+      305 +        content_type: 'video/mp4',                            
+      306 +        size_bytes: 1024,                                     
+      307 +        storage_key: `videos/${id}/original`,                 
+      308 +        part_size: 67108864,                                  
+      309 +        part_count: 1,                                        
+      310 +      });                                                     
+      311 +    };                                                        
+      312 +                                                              
+      313 +    it('should return a ready video by its public_id', async (
+          +) => {                                                        
+      314 +      const ready = await insertVideo(VideoStatus.READY);     
+      315 +                                                              
+      316 +      const video = await videosService.findReadyByPublicId(re
+          +ady.public_id);                                               
+      317 +                                                              
+      318 +      expect(video).toMatchObject({                           
+      319 +        id: ready.id,                                         
+      320 +        public_id: ready.public_id,                           
+      321 +        status: VideoStatus.READY,                            
+      322 +      });                                                     
+      323 +    });                                                       
+     … +21 lines (ctrl+o to expand)
+
+● Agora o e2e test/videos-playback.e2e-spec.ts, que cobre os 5 cenários da spec:
+
+● Write(nestjs-project/test/videos-playback.e2e-spec.ts)
+  ⎿  Wrote 226 lines to nestjs-project/test/videos-playback.e2e-spec.ts
+       1 import { randomBytes } from 'node:crypto';
+       2 import { INestApplication } from '@nestjs/common';
+       3 import { ThrottlerStorage, ThrottlerStorageService } from '@nest
+         js/throttler';
+       4 import request from 'supertest';
+       5 import { App } from 'supertest/types';
+       6 import { DataSource, IsNull, Not } from 'typeorm';
+       7 import { StorageService } from '../src/storage/storage.service';
+       8 import { cleanAllTables } from '../src/test/create-test-data-sou
+         rce';
+     … +218 lines (ctrl+o to expand)
+
+● Antes de rodar os testes, vou conferir o envelope de erro e o estado dos
+  containers. O start:dev precisa estar parado.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Infra no ar e sem start:dev. Vou rodar as suítes do SI:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Todos os testes passaram; vou quebrar o código de propósito duas vezes (tirar
+  o filtro de ready e remover o contentDisposition) para confirmar que eles
+  realmente detectam falhas. · summary
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Com o código quebrado, os testes falharam como esperado, e o service já foi
+  restaurado. Agora vou regenerar o openapi.json:
+
+● Bash(docker compose exec -T nestjs-api npm run openapi:export 2>&1 | tail -5;
+      git diff --stat openapi.json; python3 - <<'EOF'
+      import json…)
+  ⎿  > nestjs-project@0.0.1 openapi:export
+     > ts-node -r tsconfig-paths/register src/openapi-export.ts
+     … +17 lines (ctrl+o to expand)
+  ⎿  1 file changed (binary, mode only or too large to show)
+     nestjs-project/openapi.json
+  ⎿  (timeout 2m)
+
+● O openapi.json agora tem as 8 operações. As 6 do dono exigem bearer e as 2
+  públicas não, com header Location no 302. O diff só acrescenta linhas. Agora a
+  regressão completa, tsc e lint:
+
+● Bash(docker compose exec -T nestjs-api npx tsc --noEmit; echo "tsc exit=$?";
+      docker compose exec -T nestjs-api npm run lint 2>&1 | tail -4; docker
+      compose exec -T ne…)
+  ⎿  tsc exit=0
+       795:63  warning  Unsafe argument of type `any` assigned to a paramet
+     er of type `SelectQueryBuilder<RefreshToken>`       @typescript-eslint
+     … +18 lines (ctrl+o to expand)
+  ⎿  Updated nestjs-project/src/videos/videos.service.spec.ts +2 -1
+      559 
+      560  describe('VideosService.findReadyByPublicId / getPlaybackUrl',
+            () => {
+      561    const PUBLIC_ID = 'AbCdEfGh_-1';
+      562 -  const PRESIGNED = 'http://localhost:9000/streamtube/videos/v
+          -ideo-1/original?X-Amz-Signature=sig';                         
+      562 +  const PRESIGNED =                                           
+      563 +    'http://localhost:9000/streamtube/videos/video-1/original?
+          +X-Amz-Signature=sig';                                         
+      564    let service: VideosService;
+      565    let repo: { findOne: jest.Mock };
+      566    let storage: { presignGet: jest.Mock };
+  ⎿  Updated nestjs-project/test/videos-playback.e2e-spec.ts +6 -3
+      192            for (const token of [null, owner.accessToken]) {
+      193              const res = await getPlayback(public_id, mode, tok
+           en);
+      194 
+      195 -            expect({ status, mode, owner: !!token, code: res.s
+          -tatus }).toEqual(                                             
+      196 -              { status, mode, owner: !!token, code: 404 },    
+      197 -            );                                                
+      195 +            expect({ status, mode, owner: !!token, code: res.s
+          +tatus }).toEqual({                                            
+      196 +              status,                                         
+      197 +              mode,                                           
+      198 +              owner: !!token,                                 
+      199 +              code: 404,                                      
+      200 +            });                                               
+      201              expect(res.body).toMatchObject({ error: 'VIDEO_NOT
+           _FOUND' });
+      202            }
+      203          }
+  ⎿  (timeout 10m)
+
+● Tudo passou: tsc limpo, lint sem erros, 299 testes unitários e de integração e
+  87 e2e. Vou checar como os commits anteriores incluíram o progress.md. 
+  · summary
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● A checklist do plano não é marcada a cada SI; só o progress.md registra o
+  andamento. Vou atualizá-lo:
+
+● Bash(python3 - <<'EOF'
+      p='docs/phases/phase-03-videos/progress.md'…)
+  ⎿   docs/phases/phase-03-videos/progress.md            |  32 +-
+      nestjs-project/openapi.json                        | 847 ++++++++++++
+     +++++++++
+     … +9 lines (ctrl+o to expand)
+  ⎿  Updated docs/phases/phase-03-videos/progress.md +28 -4
+      1  # phase-03-videos — Progress
+      2 
+      3  **Status:** in_progress
+      4 -**SIs:** 12/14 completed                                        
+      4 +**SIs:** 13/14 completed                                        
+      5 
+      6  ### SI-03.1 — Infra: Redis, MinIO, FFmpeg e bibliotecas da fase
+      7  - **Status:** completed
+     ...
+      247      - `VIDEO_DETAIL` em `videos.constants.ts`.
+      248 
+      249  ### SI-03.13 — Endpoints públicos de streaming e download (302
+            pré-assinado)
+      250 -- **Status:** pending                                         
+      251 -- **Tests:** —                                                
+      252 -- **Observations:** none                                      
+      250 +- **Status:** completed                                       
+      251 +- **Tests:** 25 novos passando:                               
+      252 +  - `videos.service.spec.ts`: 7 unit novos.                   
+      253 +    - `findReadyByPublicId`: busca por `public_id` + `status =
+          + ready`; sem linha → `VideoNotFoundException`; `publicId` malf
+          +ormado → `VideoNotFoundException` sem consultar o banco.      
+      254 +    - `getPlaybackUrl`: `stream` assina com `expiresIn: 3600` 
+          ++ `contentType` e sem `contentDisposition`; `download` inclui 
+          +`attachment; filename="my clip.mp4"`; nome saneado (aspas, `\`
+          + e caracteres de controle removidos); vídeo não `ready` → nada
+          + é assinado.                                                  
+      255 +  - `videos.service.integration-spec.ts`: 5 novos de `findRead
+          +yByPublicId` (Postgres real).                                 
+      256 +    - Vídeo `ready` encontrado pelo `public_id`.              
+      257 +    - `draft`, `processing` e `failed` → `VideoNotFoundExcepti
+          +on` (`it.each`).                                              
+      258 +    - `public_id` inexistente → `VideoNotFoundException`.     
+      259 +  - `public-id.util.spec.ts`: 7 novos de `isPublicIdFormat` (1
+          + aceita 1.000 ids gerados, 6 rejeições em `it.each`).         
+      260 +  - `test/videos-playback.e2e-spec.ts`: 5 testes, os 5 cenário
+          +s de `specs/videos-playback.plan.md`.                         
+      261 +    - `stream-redireciona-para-url-publica`: `302` sem corpo, 
+          +`Location` no host de `S3_PUBLIC_ENDPOINT` com `X-Amz-Signatur
+          +e`.                                                           
+      262 +    - `stream-atende-range-com-206`: `Range: bytes=0-99` via `
+          +requestPresigned` → `206`, 100 bytes iguais aos do buffer, `Co
+          +ntent-Range: bytes 0-99/4096`, `Content-Type: video/mp4`.     
+      263 +    - `download-forca-attachment-com-nome-original`: `200` com
+          + os 4096 bytes e `Content-Disposition: attachment; filename="m
+          +y clip.mp4"`.                                                 
+      264 +    - `status-nao-ready-recebe-404-inclusive-para-o-dono`: `dr
+          +aft`/`processing`/`failed` × `stream`/`download` × sem token/t
+          +oken do dono → `404 VIDEO_NOT_FOUND`.                         
+      265 +    - `public-id-inexistente-tem-resposta-identica`: `AAAAAAAA
+          +AAA` → `statusCode`/`error`/`message` idênticos aos do vídeo e
+          +m `processing`; `x` → `404` (nunca `400`).                    
+      266 +  - Teste de mutação: tirar o filtro `status = ready` e o `con
+          +tentDisposition` do service faz 3 dos 5 e2e falharem; o código
+          + foi restaurado em seguida.                                   
+      267 +                                                              
+      268 +  Regressão: 299 unit/integration (39 suítes) e 87 e2e (9 suít
+          +es) passando. `tsc --noEmit` limpo. `npm run lint` com 0 erros
+          + e os 23 warnings pré-existentes.                             
+      269 +- **Observations:**                                           
+      270 +  - **`publicId` malformado sem ir ao banco.** `isPublicIdForm
+          +at` (em `public-id.util.ts`, ao lado de `generatePublicId`) va
+          +lida o formato `^[A-Za-z0-9_-]{11}$` do TD-07. Fora dele, `fin
+          +dReadyByPublicId` lança o mesmo `VideoNotFoundException` sem c
+          +onsultar `videos`, como pede a regra de validação (formato inv
+          +álido → 404, nunca 400).                                      
+      271 +  - **Redirect com `@Redirect()` dinâmico.** As rotas retornam
+          + `HttpRedirectResponse` (`{ url, statusCode: 302 }`), conforme
+          + a doc do NestJS consultada no Context7. Exceções do service c
+          +ontinuam passando pelo `DomainExceptionFilter`, por isso o 404
+          + tem o envelope padrão.                                       
+      272 +  - **`@ApiBearerAuth` movido da classe para as rotas do dono 
+          +(além do plano).** No `@nestjs/swagger@11.4.2`, a segurança de
+          +clarada na classe vale para toda rota do controller. Com ela l
+          +á, o `openapi.json` mostraria `stream`/`download` exigindo bea
+          +rer. Agora as 6 rotas do dono têm `@ApiBearerAuth('access-toke
+          +n')` cada uma, e as 2 públicas saem sem `security`. O comporta
+          +mento em runtime não muda: quem decide é o `JwtAuthGuard` glob
+          +al + `@Public()`.                                             
+      273 +  - **OpenAPI.** O 302 documenta o header `Location` (`format:
+          + uri`) via `headers` do `@ApiResponse`, e o 404 usa `ApiErrorE
+          +nvelope`. Esses decoradores ficam agrupados em `ApiPlaybackRes
+          +ponses` (`applyDecorators`). O `openapi.json` foi regenerado c
+          +om `npm run openapi:export` e agora tem as 8 operações de `###
+          + API Contracts`. O diff só acrescenta linhas: as rotas de `aut
+          +h` não mudaram.                                               
+      274 +  - **Saneamento do nome no download.** Além de aspas e caract
+          +eres de controle (pedidos pelo plano), a `\` também é removida
+          +, porque é o caractere de escape do quoted-string. Caracteres 
+          +não ASCII são mantidos como estão: o plano não pede `filename*
+          +` (RFC 5987), e isso fica como follow-up caso apareça problema
+          + com nomes acentuados.                                        
+      275 +  - **Setup do e2e.** O rascunho é criado por `POST /videos`; 
+          +o multipart aberto é abortado, os bytes vão por `putObject` e 
+          +a linha passa para `ready` com `upload_id = null` direto no ba
+          +nco, sem worker (que fica para o SI-03.14). O supertest usa `.
+          +redirects(0)`.                                                
+     … +4 lines (ctrl+o to expand)
+
+● A contagem está errada: 7 + 5 + 7 + 5 dá 24 testes, não 25. Vou corrigir:
+
+● Bash(sed -i 's/^- \*\*Tests:\*\* 25 novos passando:$/- **Tests:** 24 novos
+      passando:/' docs/phases/phase-03-videos/progress.md && grep -n "24 novos
+      passando" docs/ph…)
+  ⎿  251:- **Tests:** 24 novos passando:
+     feature/phase-03-videos
+  ⎿  Updated docs/phases/phase-03-videos/progress.md +1 -1
+      248 
+      249  ### SI-03.13 — Endpoints públicos de streaming e download (302
+            pré-assinado)
+      250  - **Status:** completed
+      251 -- **Tests:** 25 novos passando:                               
+      251 +- **Tests:** 24 novos passando:                               
+      252    - `videos.service.spec.ts`: 7 unit novos.
+      253      - `findReadyByPublicId`: busca por `public_id` + `status =
+            ready`; sem linha → `VideoNotFoundException`; `publicId` malf
+           ormado → `VideoNotFoundException` sem consultar o banco.
+      254      - `getPlaybackUrl`: `stream` assina com `expiresIn: 3600`
+           + `contentType` e sem `contentDisposition`; `download` inclui
+           `attachment; filename="my clip.mp4"`; nome saneado (aspas, `\`
+            e caracteres de controle removidos); vídeo não `ready` → nada
+            é assinado.
+
+● Terminei o SI-03.13 e parei aqui. Ainda não fiz o commit: faço depois do seu
+  ok, na feature/phase-03-videos (branch conferida).
+
+  Testes
+
+  Todos rodaram no container nestjs-api, com --runInBand e sem start:dev.
+
+  Suítes do SI:
+  PASS src/videos/videos.service.integration-spec.ts
+  PASS src/videos/videos.service.spec.ts
+  PASS src/videos/public-id.util.spec.ts
+  Tests: 67 passed, 67 total
+
+  PASS test/videos-playback.e2e-spec.ts
+    ready video
+      ✓ stream-redireciona-para-url-publica
+      ✓ stream-atende-range-com-206
+      ✓ download-forca-attachment-com-nome-original
+    video not ready
+      ✓ status-nao-ready-recebe-404-inclusive-para-o-dono
+      ✓ public-id-inexistente-tem-resposta-identica
+  Tests: 5 passed, 5 total
+
+  São 24 testes novos: 7 unit do service, 5 de integração com Postgres real, 7
+  do validador de formato do public_id e 5 e2e.
+
+  Regressão completa:
+
+  ┌───────────────────┬────────────────────────────────────────────┐
+  │    Verificação    │                 Resultado                  │
+  ├───────────────────┼────────────────────────────────────────────┤
+  │ Unit e integração │ 299 passando, 39 suítes                    │
+  ├───────────────────┼────────────────────────────────────────────┤
+  │ E2E               │ 87 passando, 9 suítes                      │
+  ├───────────────────┼────────────────────────────────────────────┤
+  │ npx tsc --noEmit  │ exit 0                                     │
+  ├───────────────────┼────────────────────────────────────────────┤
+  │ npm run lint      │ 0 erros, só os 23 warnings que já existiam │
+  └───────────────────┴────────────────────────────────────────────┘
+
+  Para garantir que os testes pegam erro de verdade, quebrei o service de
+  propósito: tirei o filtro status = ready e o Content-Disposition. 3 dos 5 e2e
+  falharam, e o código voltou ao original.
+
+  O que mudou
+
+  - Service:
+    - findReadyByPublicId só encontra vídeos ready. Vídeo inexistente, em outro
+      status ou com publicId em formato inválido dá o mesmo 404 VIDEO_NOT_FOUND.
+      No formato inválido o banco nem é consultado.
+    - getPlaybackUrl gera a URL pré-assinada pelo cliente público, válida por
+      3600s. No download, ela inclui attachment; filename="..." com o nome
+      saneado.
+  - Rotas: GET /videos/:publicId/stream e /download são públicas e respondem 302
+    com Location, usando o @Redirect() dinâmico.
+  - openapi.json: regenerado, com as 8 operações da fase. O diff só acrescenta
+    linhas.
+
+  Pontos que precisam do seu olhar
+
+  1. Mudança além do plano: tirei o @ApiBearerAuth do topo do VideosController e
+     coloquei em cada uma das 6 rotas do dono. Sem isso, o openapi.json
+     mostraria stream e download exigindo token. Quem autoriza de fato continua
+     sendo o guard global com @Public(), então nada muda na execução.
+  2. Nome do arquivo no download: além de aspas e caracteres de controle, também
+     removo a \, que serve de escape dentro das aspas. Acentos e outros
+     caracteres não-ASCII passam como estão. Se nomes acentuados derem problema,
+     o caminho é um follow-up com filename* (RFC 5987).
+  3. O npm run lint reformatou o e2e novo. A regressão completa rodou depois
+     disso e passou.
+
+  Tudo isso está registrado no docs/phases/phase-03-videos/progress.md.
+
+  Com o seu ok, faço o commit feat(videos): add public stream and download 
+  redirects for ready videos e sigo para o SI-03.14.
+
+✻ Worked for 6m 54s · done 10:05 PM
+
+❯ Antes do commit: remova o eslint-disable-next-line do attachmentDisposition   
+  em videos.service.ts. Reescreva o saneamento sem regex de caracteres de       
+  controle (ex.: filtrando caractere a caractere pelo código: remover código <  
+  0x20, 0x7f, aspas e barra invertida), mantendo exatamente o mesmo             
+  comportamento. Os testes unit de saneamento devem continuar passando. Rode    
+  lint (0 erros e sem novos eslint-disable no projeto: grep -rn                 
+  "eslint-disable" src test), tsc e os testes do SI. Depois faça o commit       
+  "feat(videos): add public stream and download redirects for ready videos".    
+
+  Read 1 file (ctrl+o to expand)
+
+● Update(nestjs-project/src/videos/videos.service.ts)
+  ⎿  Added 18 lines, removed 6 lines
+      67    );
+      68  };
+      69 
+      70 -/**                                                            
+      71 - * `attachment; filename="..."` with the characters that would 
+         -break the                                                      
+      72 - * quoted-string removed: `"`, `\` and control characters.     
+      73 - */                                                            
+      70 +const DEL_CHAR_CODE = 0x7f;                                    
+      71 +const FIRST_PRINTABLE_CHAR_CODE = 0x20;                        
+      72 +                                                               
+      73 +/** Whether `char` would break a header quoted-string: `"`, `\`
+         + or a control character. */                                    
+      74 +const isUnsafeInQuotedString = (char: string): boolean => {    
+      75 +  const code = char.charCodeAt(0);                             
+      76 +  return (                                                     
+      77 +    code < FIRST_PRINTABLE_CHAR_CODE ||                        
+      78 +    code === DEL_CHAR_CODE ||                                  
+      79 +    char === '"' ||                                            
+      80 +    char === '\\'                                              
+      81 +  );                                                           
+      82 +};                                                             
+      83 +                                                               
+      84 +/** `attachment; filename="..."` with the unsafe characters rem
+         +oved. */                                                       
+      85  const attachmentDisposition = (fileName: string): string => {
+      75 -  // eslint-disable-next-line no-control-regex                 
+      76 -  const safeName = fileName.replace(/["\\\u0000-\u001f\u007f]/g
+         -, '');                                                         
+      86 +  const safeName = Array.from(fileName)                        
+      87 +    .filter((char) => !isUnsafeInQuotedString(char))           
+      88 +    .join('');                                                 
+      89    return `attachment; filename="${safeName}"`;
+      90  };
+      91 
+
+● A sanitização agora filtra caractere por caractere pelo código, sem regex,
+  mantendo o mesmo comportamento com pares surrogate. Vou rodar as verificações
+  em seguida. · summary
+  Ran 1 shell command (ctrl+o to expand)
+
+● Tudo verde, e o lint não alterou nenhum arquivo. Vou commitar na
+  feature/phase-03-videos:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Removi o eslint-disable-next-line e commitei o SI-03.13 na
+  feature/phase-03-videos como f991ac5 feat(videos): add public stream and 
+  download redirects for ready videos. O working tree está limpo e o push fica
+  com você.
+
+  O que mudou em videos.service.ts: o saneamento do nome no download não usa
+  mais regex. Ele percorre o nome caractere a caractere e remove os de código < 
+  0x20, o 0x7f, as aspas e a barra invertida. O resultado é idêntico ao do regex
+  de antes, inclusive para emojis e outros caracteres fora do básico, que
+  continuam sendo mantidos.
+
+  Verificações:
+
+  ┌────────────────────────────┬────────────────────────────────────────────┐
+  │        Verificação         │                 Resultado                  │
+  ├────────────────────────────┼────────────────────────────────────────────┤
+  │ npm run lint               │ 0 erros (os mesmos 23 warnings de antes);  │
+  │                            │ não alterou nenhum arquivo                 │
+  ├────────────────────────────┼────────────────────────────────────────────┤
+  │ grep -rn "eslint-disable"  │ nenhuma ocorrência                         │
+  │ src test                   │                                            │
+  ├────────────────────────────┼────────────────────────────────────────────┤
+  │ npx tsc --noEmit           │ exit 0                                     │
+  ├────────────────────────────┼────────────────────────────────────────────┤
+  │ Unit e integração do SI    │ 67/67 passando, incluindo o teste de       │
+  │                            │ saneamento do nome                         │
+  ├────────────────────────────┼────────────────────────────────────────────┤
+  │ E2E videos-playback        │ 5/5 passando                               │
+  └────────────────────────────┴────────────────────────────────────────────┘
+
+  Depois dessa última mudança rodei só as suítes do SI. A regressão completa
+  (299 + 87) foi antes, mas a mudança ficou restrita a uma função interna,
+  coberta pelos testes do SI.
+
+  Fico no aguardo do seu ok para começar o SI-03.14 — Fluxo completo upload → 
+  processamento → streaming (E2E com worker real).
+
+✻ Cogitated for 1m 10s · done 10:09 PM
+
+❯ /context 
+  ⎿  Context usage
+     ⛀ ⛁ ⛁ ⛁ ⛀ ⛀ ⛀ ⛀ ⛁ ⛀ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁   Opus 5.5
+     ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶   claude-opus-5-5
+     ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶   152.8k/1m tokens (15%)
+     ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ 
+     ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶   Estimated tokens by category
+     ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶   ⛁ System prompt: 3k (0.3%)
+     ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶   ⛁ System tools: 17.2k (2%)
+     ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶   ⛁ MCP tools: 969 (0.1%)
+     ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶   ⛁ MCP server instructions: 945 (0.1%)
+     ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛝ ⛝ ⛝ ⛝ ⛝ ⛝ ⛝   ⛁ Custom agents: 1.1k (0.1%)
+                                               ⛁ Memory files: 2k (0.2%)
+                                               ⛁ Skills: 7.6k (0.8%)
+                                               ⛁ Messages: 120k (12%)
+                                               ⛶ Free space: 814.2k (81%)
+                                               ⛝ Autocompact buffer: 33k (3%)
+
+     Auto-compact window:  1m tokens
+
+     13 MCP tools (loaded on-demand) · 6 agents · 2 memory files · 43 skills
+     /context all to expand
+
+❯ ok, siga para o SI-03.14.                                                     
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Estou na branch certa e sem pendências; vou ver o MediaFixtures e a
+  infraestrutura de teste do worker, já que com part_size fixo de 64MiB um envio
+  em 2 partes exige arquivo maior que 64MiB. · summary
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Preciso ver como os testes do SI-03.11 montam Worker e QueueEvents, para
+  reaproveitar o padrão:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Uso o mesmo padrão do SI-03.11: QueueEvents com o prefixo da suíte e
+  waitUntilFinished. Vou consultar o context7 sobre o waitUntilFinished do
+  BullMQ:
+
+  Called context7 (ctrl+o to expand)
+
+● O Context7 não tem a doc do bullmq 6.7.8, então vou conferir o código
+  instalado e as opções do enqueue, já que um job removido ao completar faria o
+  waitUntilFinished rejeitar com "Missing key". · summary
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+● Confirmei no bullmq 6.7.8 que waitUntilFinished rejeita com "Missing key" se o
+  job já tiver sumido, o que pode acontecer com removeOnComplete: true. Vou
+  registrar os listeners do QueueEvents antes do complete e acrescentar a opção
+  padToBytes ao MediaFixtures. · summary
+
+● Bash(python3 - <<'EOF'
+      p='src/test/media-fixtures.ts'…)
+  ⎿  18:  padToBytes?: number;
+     43:      padToBytes,
+     62:    if (padToBytes !== undefined) await this.padWithFreeBox(output,
+     … +3 lines (ctrl+o to expand)
+  ⎿  Updated nestjs-project/src/test/media-fixtures.ts +24 -1
+      1  import { execFile } from 'node:child_process';
+      2 -import { mkdtemp, rm, writeFile } from 'node:fs/promises';      
+      2 +import { appendFile, mkdtemp, rm, stat, writeFile } from 'node:f
+        +s/promises';                                                    
+      3  import { tmpdir } from 'node:os';
+      4  import { join } from 'node:path';
+      5  import { promisify } from 'node:util';
+     ...
+      11    width?: number;
+      12    height?: number;
+      13    withAudio?: boolean;
+      14 +  /**                                                          
+      15 +   * Grows the file to exactly this size with a trailing ISO BM
+         +FF `free` box                                                  
+      16 +   * (padding that players and ffprobe skip), e.g. to exceed on
+         +e upload part.                                                 
+      17 +   */                                                          
+      18 +  padToBytes?: number;                                         
+      19  }
+      20 
+      21 +/** 4-byte big-endian size + 4-byte type of an ISO BMFF box hea
+         +der. */                                                        
+      22 +const BOX_HEADER_BYTES = 8;                                    
+      23 +                                                               
+      24  /**
+      25   * Generates short media files with the FFmpeg of the dev image
+          , in a temporary
+      26   * directory, so no video binary is committed (phase-03-videos/
+          TD-13).
+     ...
+      40        width = 320,
+      41        height = 240,
+      42        withAudio = true,
+      43 +      padToBytes,                                              
+      44      }: VideoFixtureOptions = {},
+      45    ): Promise<string> {
+      46      const output = join(this.dir, name);
+     ...
+      59      args.push('-movflags', '+faststart', '-y', output);
+      60 
+      61      await execFileAsync('ffmpeg', args);
+      62 +    if (padToBytes !== undefined) await this.padWithFreeBox(out
+         +put, padToBytes);                                              
+      63      return output;
+      64    }
+      65 
+     ...
+       88      return output;
+       89    }
+       90 
+       91 +  private async padWithFreeBox(file: string, totalBytes: numbe
+          +r): Promise<void> {                                           
+     … +15 lines (ctrl+o to expand)
+
+● Vou validar que o ffprobe aceita o arquivo com padding e mantém a duração:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● O ffprobe lê o arquivo de 65MiB sem erro, com duração de 3s e as duas streams.
+  Agora o harness test/support/video-pipeline.ts:
+
+● Write(nestjs-project/test/support/video-pipeline.ts)
+  ⎿  Wrote 168 lines to nestjs-project/test/support/video-pipeline.ts
+       1 import type { IncomingMessage } from 'node:http';
+       2 import type { Server } from 'node:http';
+       3 import { getQueueToken } from '@nestjs/bullmq';
+       4 import type { INestApplication } from '@nestjs/common';
+       5 import { Test, type TestingModule } from '@nestjs/testing';
+       6 import { Queue, QueueEvents } from 'bullmq';
+       7 import type { App } from 'supertest/types';
+       8 import { QUEUE_NAMES } from '../../src/queue/queue.constants';
+       9 import {
+      10   requestPresigned,
+     … +158 lines (ctrl+o to expand)
+
+● Correção pontual: se a variável não existia antes, process.env.X = undefined
+  gravaria a string "undefined". Nesse caso o certo é apagá-la:
+
+● Update(nestjs-project/test/support/video-pipeline.ts)
+  ⎿  Added 5 lines, removed 1 line
+      132        await queue.obliterate({ force: true });
+      133        await worker.close(); // closes the BullMQ worker (onApp
+           licationShutdown)
+      134        await app.close();
+      135 -      process.env.QUEUE_BACKOFF_DELAY_MS = previousBackoff;   
+      135 +      if (previousBackoff === undefined) {                    
+      136 +        delete process.env.QUEUE_BACKOFF_DELAY_MS;            
+      137 +      } else {                                                
+      138 +        process.env.QUEUE_BACKOFF_DELAY_MS = previousBackoff; 
+      139 +      }                                                       
+      140        queuePrefix.restore();
+      141        restoreBucket();
+      142      },
+
+● Agora a suíte test/video-pipeline.e2e-spec.ts:
+
+● Write(nestjs-project/test/video-pipeline.e2e-spec.ts)
+  ⎿  Wrote 352 lines to nestjs-project/test/video-pipeline.e2e-spec.ts
+       1 import { readFile } from 'node:fs/promises';
+       2 import { INestApplication } from '@nestjs/common';
+       3 import { ThrottlerStorage, ThrottlerStorageService } from '@nest
+         js/throttler';
+       4 import request from 'supertest';
+       5 import { App } from 'supertest/types';
+       6 import { DataSource } from 'typeorm';
+       7 import { StorageService } from '../src/storage/storage.service';
+       8 import { cleanAllTables } from '../src/test/create-test-data-sou
+         rce';
+     … +344 lines (ctrl+o to expand)
+
+● Vou rodar a suíte nova (o start:dev continua parado):
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Os 4 testes passaram; o ERROR no log é esperado, vindo do onFailed do worker
+  ao registrar a falha do cenário de arquivo inválido. Agora rodo a verificação
+  final da fase: tsc, lint, grep de eslint-disable, build e as suítes completas.
+  · summary
+
+● Bash(docker compose exec -T nestjs-api npx tsc --noEmit; echo "tsc exit=$?";
+      docker compose exec -T nestjs-api npm run lint 2>&1 | tail -2; echo "---
+      eslint-disable:…)
+  ⎿  tsc exit=0
+     ✖ 24 problems (1 error, 23 warnings)
+     … +15 lines (ctrl+o to expand)
+  ⎿  Updated nestjs-project/src/test/media-fixtures.ts +4 -1
+      88      return output;
+      89    }
+      90 
+      91 -  private async padWithFreeBox(file: string, totalBytes: number
+         -): Promise<void> {                                             
+      91 +  private async padWithFreeBox(                                
+      92 +    file: string,                                              
+      93 +    totalBytes: number,                                        
+      94 +  ): Promise<void> {                                           
+      95      const boxSize = totalBytes - (await stat(file)).size;
+      96      if (boxSize < BOX_HEADER_BYTES) {
+      97        throw new Error(
+  ⎿  Updated nestjs-project/test/video-pipeline.e2e-spec.ts +5 -4
+      119      return new Map(parts.map((p) => [p.part_number, p.url]));
+      120    };
+      121 
+      122 -  const complete = (id: string, parts: { part_number: number; 
+          -etag: string }[]) =>                                          
+      122 +  const complete = (                                          
+      123 +    id: string,                                               
+      124 +    parts: { part_number: number; etag: string }[],           
+      125 +  ) =>                                                        
+      126      authed(request(app.getHttpServer()).post(`/videos/${id}/up
+           load/complete`))
+      127        .send({ parts })
+      128        .expect(200);
+     ...
+      181 
+      182      expect(media.statusCode).toBe(206);
+      183      expect(media.body.equals(content.subarray(0, 100))).toBe(t
+           rue);
+      181 -    expect(media.headers['content-range']).toBe(              
+      182 -      `bytes 0-99/${content.length}`,                         
+      183 -    );                                                        
+      184 +    expect(media.headers['content-range']).toBe(`bytes 0-99/${
+          +content.length}`);                                            
+      185      return redirect.headers.location;
+      186    };
+      187 
+  ⎿  (timeout 10m)
+
+● Um erro de lint. Vou ver qual é:
+
+  Read 1 file, ran 1 shell command (ctrl+o to expand)
+
+● O expect.stringMatching é tipado como any. Vou trocar por uma asserção direta,
+  mais simples e já tipada:
+
+● Update(nestjs-project/test/video-pipeline.e2e-spec.ts)  ⎿  Added 2 lines, removed 4 lines
+      232        // No API request carried video bytes: every body was sm
+           all JSON.
+      233        expect(pipeline.apiRequests.list.length).toBeGreaterThan
+           (0);
+      234        for (const req of pipeline.apiRequests.list) {
+      235 -        expect(req).toEqual(                                  
+      236 -          expect.objectContaining({                           
+      237 -            contentType: expect.stringMatching(/^application\/
+          -json/),                                                       
+      238 -          }),                                                 
+      235 +        expect(req.contentType ?? `none (${req.method} ${req.u
+          +rl})`).toMatch(                                               
+      236 +          /^application\/json/,                               
+      237          );
+      238          expect(req.contentLength).toBeLessThan(MAX_JSON_BODY_B
+           YTES);
+      239        }
+
+● Vou rodar o lint outra vez e um teste de mutação no registrador de
+  requisições, com o teto em 10 bytes, para garantir que o cenário feliz falhe;
+  depois restauro e reexecuto a suíte. · summary
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● O registrador funciona: ele flagrou o corpo JSON de 74 bytes e, restaurado o
+  valor, a suíte voltou a passar. O resumo do lint não apareceu na saída, então
+  vou rodá-lo de novo:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Lint passou com 0 erros e os 23 warnings de sempre, tsc está limpo e não há
+  nenhum eslint-disable. Agora vou rodar o e2e completo de novo, já que mexi
+  nele depois da regressão, e atualizar o progress.md em paralelo. · summary
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Bash(cd /home/teiabessa/mbaengsoft/mba-ia-streamTube-greenfield && python3 -
+      <<'EOF'
+      p='docs/phases/phase-03-videos/progress.md'…)
+  ⎿  4:**SIs:** 14/14 completed
+  ⎿  Updated docs/phases/phase-03-videos/progress.md +32 -5
+      1  # phase-03-videos — Progress
+      2 
+      3 -**Status:** in_progress                                         
+      4 -**SIs:** 13/14 completed                                        
+      3 +**Status:** completed                                           
+      4 +**SIs:** 14/14 completed                                        
+      5 
+      6  ### SI-03.1 — Infra: Redis, MinIO, FFmpeg e bibliotecas da fase
+      7  - **Status:** completed
+     ...
+      276    - **Arquivos além dos listados no plano:** `VIDEO_PLAYBACK`
+           em `videos.constants.ts`, `PlaybackMode` em `videos.types.ts`
+           e `isPublicIdFormat` em `public-id.util.ts`.
+      277 
+      278  ### SI-03.14 — Fluxo completo upload → processamento → streami
+           ng (E2E com worker real)
+      279 -- **Status:** pending                                         
+      280 -- **Tests:** —                                                
+      281 -- **Observations:** none                                      
+      279 +- **Status:** completed                                       
+      280 +- **Tests:** 4 novos passando em `test/video-pipeline.e2e-spec
+          +.ts`, com Postgres, Redis, MinIO e FFmpeg reais, API e worker 
+          +no processo do teste:                                         
+      281 +  - `mp4-em-2-partes-chega-a-ready-e-e-reproduzido`.          
+      282 +    - MP4 de 3s com 65 MiB (`part_count = 2`), partes enviadas
+          + por `PUT` nas URLs pré-assinadas e `complete`, sem nenhuma ch
+          +amada manual ao worker. O job termina `completed`.            
+      283 +    - `GET /videos/:id`: `ready`, `duration_seconds ≈ 3`, `met
+          +adata` (320x240, h264/aac, `sizeBytes` = tamanho do arquivo) e
+          + thumbnail que responde `200 image/jpeg` com assinatura `FF D8
+          +`.                                                            
+      284 +    - `stream` → `302`; `Range: bytes=0-99` → `206`, 100 bytes
+          + iguais aos do arquivo e `Content-Range: bytes 0-99/{size}`.  
+      285 +    - `download` → `302`; `200` com o arquivo inteiro e `Conte
+          +nt-Disposition: attachment; filename="happy.mp4"`.            
+      286 +    - Toda requisição à API com corpo nesse fluxo é `applicati
+          +on/json` e tem menos de 64 KiB.                               
+      287 +  - `upload-interrompido-e-retomado-sem-reenviar-a-parte-1`: s
+          +ó a parte 1 é enviada; `GET .../upload/parts` lista a parte 1 
+          +com o `ETag` e `size_bytes = 64 MiB`; a retomada pede URL só p
+          +ara a parte 2, envia a parte 2 e conclui. Cada parte é enviada
+          + uma única vez; o vídeo chega a `ready` e o stream atende `Ran
+          +ge`.                                                          
+      288 +  - `arquivo-que-nao-e-video-termina-failed`: arquivo de texto
+          + com `content_type: "video/mp4"` → job `failed`, `status = fai
+          +led` com `failure_reason` preenchido, sem duração nem thumbnai
+          +l, e `stream` → `404 VIDEO_NOT_FOUND`.                        
+      289 +  - `dois-videos-tem-public-id-distintos-e-cada-stream-aponta-
+          +para-o-proprio-objeto`: dois MP4 de tamanhos diferentes → `pub
+          +lic_id` distintos; cada `Location` aponta para `videos/{id}/or
+          +iginal` do próprio vídeo, e o `Range` devolve os bytes e o tam
+          +anho do próprio arquivo.                                      
+      290 +  - Teste de mutação: com o teto de corpo da API em 10 bytes, 
+          +o cenário feliz falha (corpo JSON de 74 bytes registrado). O v
+          +alor foi restaurado em seguida.                               
+      291 +                                                              
+      292 +  Regressão: 299 unit/integration (39 suítes) e 91 e2e (10 suí
+          +tes) passando. `tsc --noEmit` limpo. `npm run lint` com 0 erro
+          +s e os 23 warnings pré-existentes, sem nenhum `eslint-disable`
+          + em `src`/`test`. `npm run build` ok, com `dist/main.js` e `di
+          +st/worker.main.js`.                                           
+      293 +- **Observations:**                                           
+      294 +  - **Desvio do plano: espera pelo `QueueEvents` em vez de `jo
+          +b.waitUntilFinished`.**                                       
+      295 +    - O `enqueue` usa `removeOnComplete: true`, e o worker rod
+          +a no mesmo processo. O job pode terminar e ser removido antes 
+          +de o teste obter o `Job` depois do `complete`.                
+      296 +    - No `bullmq@6.7.8` instalado, `waitUntilFinished` chama `
+          +isFinished` primeiro e, para um job que já não existe ("Missin
+          +g key"), rejeita como falha. O Context7 não indexa essa versão
+          + e serviu a doc atual; o comportamento foi conferido em `node_
+          +modules/bullmq/dist/cjs/classes/job.js`.                      
+      297 +    - Por isso o harness expõe `waitForJob(videoId)`, que regi
+          +stra os listeners `completed`/`failed` do `QueueEvents` para o
+          + `jobId` (= `videoId`) **antes** do `complete`. Continua sendo
+          + o `QueueEvents`, como pede o plano, mas sem essa janela de co
+          +rrida.                                                        
+      298 +  - **MP4 maior que uma parte.** Como `part_size` é fixo em 64
+          + MiB, um envio em 2 partes exige mais de 64 MiB. `MediaFixture
+          +s.video()` ganhou a opção `padToBytes`, que completa o arquivo
+          + com um box ISO BMFF `free` no fim. É padding válido de MP4 e 
+          +o `ffprobe` o ignora: a duração continua 3s e o `size` é o do 
+          +arquivo com padding. Nenhum binário é commitado (TD-13).      
+      299 +  - **Harness `test/support/video-pipeline.ts`.**             
+      300 +    - `createVideoPipeline(suite)` usa `useTestBucket()`, `use
+          +TestQueuePrefix(suite)` e `QUEUE_BACKOFF_DELAY_MS=100`, sobe o
+          + `AppModule` por `createVideosE2eApp()` (pipes/filtros do `mai
+          +n.ts`) e o `WorkerModule` em um `TestingModule` próprio, com `
+          +init()` para iniciar o worker BullMQ.                         
+      301 +    - O prefixo único garante que o `video-worker` do Compose 
+          +(prefixo `streamtube`) nunca pega esses jobs.                 
+      302 +    - Teardown: `queueEvents.close()`, `queue.obliterate({ for
+          +ce: true })`, `worker.close()` (fecha o worker BullMQ no shutd
+          +own), `app.close()` e restauração das variáveis de ambiente. S
+          +e `QUEUE_BACKOFF_DELAY_MS` não existia, ela é removida, para n
+          +ão virar a string `"undefined"`.                              
+      303 +    - Helpers `putPart` (devolve o `ETag`), `getStream(locatio
+          +n, range?)` e `getDownload(location)` sobre `requestPresigned`
+          +. A suíte não faz `fetch` direto em URL pré-assinada.         
+     … +5 lines (ctrl+o to expand)
+
+● O progress.md já está atualizado. Falta só o e2e completo, que roda em segundo
+  plano.
+
+✻ Brewed for 7m 41s · done 10:19 PM
+
+● Background command "Rerun the full e2e suite" completed (exit code 0)
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Terminei o SI-03.14 e parei aqui, sem commit. Com ele, a Fase 03 fecha 14/14.
+  O commit fica para depois do seu ok, na feature/phase-03-videos.
+
+  Testes
+
+  Todos rodaram no container nestjs-api, com --runInBand e sem start:dev.
+
+  Suíte nova test/video-pipeline.e2e-spec.ts, com API e worker no processo do
+  teste sobre Postgres, Redis, MinIO e FFmpeg reais:
+  ✓ mp4-em-2-partes-chega-a-ready-e-e-reproduzido
+  ✓ upload-interrompido-e-retomado-sem-reenviar-a-parte-1
+  ✓ arquivo-que-nao-e-video-termina-failed
+  ✓ 
+  dois-videos-tem-public-id-distintos-e-cada-stream-aponta-para-o-proprio-objeto
+  Tests: 4 passed, 4 total
+
+  Verificações de fechamento da fase:
+
+  ┌────────────────────────────┬────────────────────────────────────────────┐
+  │        Verificação         │                 Resultado                  │
+  ├────────────────────────────┼────────────────────────────────────────────┤
+  │ Unit e integração          │ 299 passando, 39 suítes                    │
+  ├────────────────────────────┼────────────────────────────────────────────┤
+  │ E2E                        │ 91 passando, 10 suítes, rodado de novo     │
+  │                            │ após o último ajuste                       │
+  ├────────────────────────────┼────────────────────────────────────────────┤
+  │ npx tsc --noEmit           │ exit 0                                     │
+  ├────────────────────────────┼────────────────────────────────────────────┤
+  │ npm run lint               │ 0 erros, só os 23 warnings que já existiam │
+  ├────────────────────────────┼────────────────────────────────────────────┤
+  │ grep -rn "eslint-disable"  │ nenhuma ocorrência                         │
+  │ src test                   │                                            │
+  ├────────────────────────────┼────────────────────────────────────────────┤
+  │ npm run build              │ ok, gera dist/main.js e                    │
+  │                            │ dist/worker.main.js                        │
+  └────────────────────────────┴────────────────────────────────────────────┘
+
+  O ERROR [VideoProcessor] … final: true que aparece no log é esperado: é a
+  falha final do cenário de arquivo inválido.
+
+  Para garantir que o teste "a API não recebe bytes de vídeo" pega erro de
+  verdade, baixei o limite de tamanho do corpo para 10 bytes. O teste falhou ao
+  registrar um corpo JSON de 74 bytes, e o valor foi restaurado.
+
+  Desvios do plano
+
+  1. Espera pelo job: o plano pede job.waitUntilFinished, mas não usei.
+     - Problema: o enqueue usa removeOnComplete: true, e o worker no mesmo
+       processo pode terminar e apagar o job antes de o teste chegar a ele. No
+       bullmq 6.7.8 instalado, o waitUntilFinished rejeita um job já apagado
+       como se tivesse falhado. Conferi no código do pacote, porque o Context7
+       não tem essa versão.
+     - Solução: o harness tem um waitForJob(videoId) que escuta completed/failed
+       no QueueEvents antes do complete. Continua usando QueueEvents, como o
+       plano pede, mas sem essa corrida.
+  2. MP4 maior que 64MiB: como a parte tem 64MiB fixos, um envio em 2 partes
+     precisa de um arquivo maior que isso. Acrescentei a opção padToBytes ao
+     MediaFixtures, que completa o MP4 com um box free no fim. O ffprobe ignora
+     esse padding: a duração continua 3s, sem erro. Nenhum binário é commitado.
+
+  Outros pontos
+
+  - "A API não recebe bytes de vídeo": um listener registrado antes do Express
+    anota cada requisição com corpo. O cenário feliz exige que todas sejam JSON
+    com menos de 64KiB.
+  - Isolamento: a suíte usa prefixo de fila próprio, então o video-worker do
+    Compose nunca pega esses jobs.
+  - Limpeza: o bucket streamtube-test é limpo depois de cada teste.
+
+  Arquivos
+
+  - nestjs-project/test/support/video-pipeline.ts (novo): harness e os helpers
+    putPart, getStream e getDownload.
+  - nestjs-project/test/video-pipeline.e2e-spec.ts (novo).
+  - nestjs-project/src/test/media-fixtures.ts: opção padToBytes.
+  - docs/phases/phase-03-videos/progress.md: SI-03.14 registrado e fase como
+    completed.
+
+  Com o seu ok, faço o commit. Sugestão de mensagem: test(videos): prove upload 
+  → worker → streaming end to end.
+
+✻ Sautéed for 18s · done 10:20 PM
+
+※ recap: A Fase 03 está fechada: o SI-03.14, o fluxo completo upload → worker → streaming, está implementado e com todos os testes, lint e build passando. Falta o seu ok para eu fazer o commit "test(videos): prove upload → worker → streaming end to end". (turn off recaps in /config)
+
+❯ ok, faça o commit "test(videos): prove upload → worker → streaming end to     
+  end".                                                                         
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Fiz o commit 3663d51 test(videos): prove upload → worker → streaming end to 
+  end na feature/phase-03-videos. O working tree ficou limpo.
+
+  Com isso a Fase 03 está concluída (14/14 SIs). Há dois commits novos nesta
+  sessão, prontos para o seu push:
+  - f991ac5: SI-03.13, stream e download públicos.
+  - 3663d51: SI-03.14, o teste de ponta a ponta do upload ao streaming.
+
+  Ficaram anotados no progress.md alguns follow-ups fora do escopo da fase:
+  - Reconciliação de vídeos presos em processing: acontece quando o vídeo muda
+    de status mas o job não entra na fila (SI-03.7).
+  - Nomes acentuados no download: usar filename* (RFC 5987) se aparecer problema
+    (SI-03.13).
+  - Configuração duplicada: extrair a configuração repetida entre AppModule e
+    WorkerModule (SI-03.10).
+  - Helpers de teste: levar o test-bucket e o videos-e2e às suítes antigas
+    (SI-03.5 e SI-03.6).
+
+✻ Brewed for 15s · done 10:24 PM
+
+❯ git log --oneline -4                                                          
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● 3663d51 test(videos): prove upload → worker → streaming end to end
+  f991ac5 feat(videos): add public stream and download redirects for ready 
+  videos
+  159ab63 docs: add claude sessions for phase 03 implementation (SI 09-12)
+  43128a4 feat(videos): add GET /videos/:id so owners can follow processing
+
+  Os dois commits do topo são desta sessão: f991ac5 (SI-03.13) e 3663d51
+  (SI-03.14). Os dois estão na feature/phase-03-videos, aguardando o seu push.
+
+✻ Baked for 7s · done 10:25 PM

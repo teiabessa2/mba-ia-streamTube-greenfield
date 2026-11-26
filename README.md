@@ -45,9 +45,9 @@ O projeto é um monorepo baseado em containers Docker. Cada subprojeto sobe sua 
 - **API** (NestJS 11) — regras de negócio, autenticação (JWT + refresh token rotation), envio de e-mails e acesso ao banco.
 - **Database** (PostgreSQL 17) — usuários, canais e tokens de autenticação.
 - **Email Service** (Mailpit) — captura os e-mails transacionais (confirmação de conta e recuperação de senha) em uma UI local.
-- **Video Worker** (FFmpeg) — processamento de vídeos *(planejado — Fase 03)*.
-- **Object Storage** (S3/MinIO) — arquivos de vídeo e thumbnails *(planejado — Fase 03)*.
-- **Message Queue** — fila de processamento de vídeos *(planejado — Fase 03)*.
+- **Video Worker** (FFmpeg) — processamento de vídeos *(Fase 03)*.
+- **Object Storage** (S3/MinIO) — arquivos de vídeo e thumbnails *(Fase 03)*.
+- **Message Queue** (Redis + BullMQ) — fila de processamento de vídeos *(Fase 03)*.
 
 O diagrama de arquitetura completo (C4) está em `docs/diagrams/software-arch.mermaid`.
 
@@ -105,10 +105,12 @@ A aplicação ficará disponível em **http://localhost:3001**.
 
 ```bash
 cd nestjs-project
-docker compose exec nestjs-api npm test               # unitários + integração
-docker compose exec nestjs-api npm run test:e2e       # end-to-end (HTTP via supertest)
-docker compose exec nestjs-api npm run test:cov       # cobertura
+docker compose exec nestjs-api npm test -- --runInBand            # unitários + integração
+docker compose exec nestjs-api npm run test:e2e -- --runInBand    # end-to-end (HTTP via supertest)
+docker compose exec nestjs-api npm run test:cov -- --runInBand    # cobertura
 ```
+
+> Rode os testes com o `start:dev` parado: as suítes compartilham Postgres, Redis e MinIO.
 
 Sufixos: `*.spec.ts` (unitário), `*.integration-spec.ts` (integração com banco real), `*.e2e-spec.ts` (end-to-end). Testes de integração/e2e rodam com `--runInBand`.
 
@@ -124,7 +126,7 @@ Sufixos: `*.test.ts(x)` (unitário), `*.integration.test.ts(x)` (Route Handlers 
 
 ## ✅ Funcionalidades implementadas
 
-**Fase 01 — Configuração base** e **Fase 02 — Autenticação** estão concluídas (backend + frontend).
+**Fase 01 — Configuração base** e **Fase 02 — Autenticação** estão concluídas (backend + frontend). **Fase 03 — Upload e Processamento de Vídeos** está concluída no backend (veja a seção da Fase 03 no fim deste README).
 
 ### Autenticação (Fase 02)
 
@@ -195,7 +197,7 @@ green-field-ia-project/
 |------|-----------|--------|
 | **01** | Configuração Base do Projeto | ✅ Concluída |
 | **02** | Cadastro, Login e Gerenciamento de Conta | ✅ Concluída |
-| **03** | Upload e Processamento de Vídeos | ⏳ Planejada |
+| **03** | Upload e Processamento de Vídeos | ✅ Concluída |
 | **04** | Gerenciamento de Vídeos e Canal | ⏳ Planejada |
 | **05** | Página de Visualização do Vídeo | ⏳ Planejada |
 | **06** | Interações Sociais (Likes, Comentários, Inscrições) | ⏳ Planejada |
@@ -214,4 +216,43 @@ Detalhes completos em `docs/project-plan.md`.
 | Containerização | Docker, Docker Compose |
 | Testes | Jest, Supertest (backend); Vitest, MSW, Playwright (frontend) |
 | Qualidade | ESLint, Prettier |
-</content>
+
+## 🎬 Fase 03 — Upload e Processamento de Vídeos
+
+Entregue no backend (`nestjs-project`):
+
+- **Upload multipart direto ao storage**, de até 10GB. A API só troca JSON: cria o rascunho e devolve URLs pré-assinadas, e as partes vão direto ao MinIO. O upload pode ser retomado.
+- **Processamento automático**: ao concluir o upload, um job entra na fila e o worker extrai a duração e os metadados (`ffprobe`), gera o thumbnail (`ffmpeg`) e deixa o vídeo `ready`, ou `failed` com o motivo.
+- **URL única** por vídeo (`public_id` curto e aleatório).
+- **Streaming e download**: `GET /videos/:publicId/stream` e `/download` redirecionam (302) para uma URL pré-assinada. O MinIO atende `Range` (206), então o player busca trechos sem baixar o arquivo inteiro.
+
+Serviços novos no `nestjs-project/compose.yaml`:
+
+| Serviço | Papel | URL / Porta |
+|---------|-------|-------------|
+| `redis` | Fila (BullMQ) | `localhost:6379` |
+| `minio` | Object storage (API S3) | `localhost:9000`; console em http://localhost:9001 |
+| `video-worker` | Consome a fila e processa os vídeos | — (inicia sozinho com o `docker compose up`) |
+
+As credenciais de desenvolvimento (banco, MinIO etc.) estão no `nestjs-project/.env.example`. Copie-o para `.env` antes de subir a stack, porque o Compose lê as credenciais do MinIO desse arquivo.
+
+Como subir e testar (com o `start:dev` **parado** durante os testes):
+
+```bash
+cd nestjs-project
+cp .env.example .env                                   # apenas na primeira vez
+docker compose up -d --build                           # inclui redis, minio e video-worker
+docker compose exec nestjs-api npm run migration:run   # aplica as migrations da fase
+docker compose logs video-worker                       # deve mostrar "Video worker started"
+
+docker compose exec nestjs-api npm test -- --runInBand          # unitários + integração
+docker compose exec nestjs-api npm run test:e2e -- --runInBand  # end-to-end, inclui o fluxo upload → worker → streaming
+```
+
+> Os testes usam o mesmo banco do ambiente de dev e recriam o schema. Os dados de dev são apagados a cada execução.
+
+Mais detalhes:
+
+- [`nestjs-project/CLAUDE.md`](./nestjs-project/CLAUDE.md): módulos, fluxos, convenções e armadilhas conhecidas.
+- [`docs/phases/phase-03-videos/`](./docs/phases/phase-03-videos/): plano e progresso da fase.
+- [`docs/decisions/technical-decisions-phase-03-videos.md`](./docs/decisions/technical-decisions-phase-03-videos.md): decisões técnicas.

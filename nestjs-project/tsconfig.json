@@ -22,5 +22,7 @@
     "strictBindCallApply": false,
     "noFallthroughCasesInSwitch": false,
     "types": ["jest", "node"]
-  }
+  },
+  // Default exclude (node_modules + outDir) plus the worker's own outDir.
+  "exclude": ["node_modules", "dist", "dist-worker"]
 }
