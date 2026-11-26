@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
-**Status:** in_progress
-**SIs:** 13/14 completed
+**Status:** completed
+**SIs:** 14/14 completed
 
 ### SI-03.1 — Infra: Redis, MinIO, FFmpeg e bibliotecas da fase
 - **Status:** completed
@@ -276,6 +276,33 @@
   - **Arquivos além dos listados no plano:** `VIDEO_PLAYBACK` em `videos.constants.ts`, `PlaybackMode` em `videos.types.ts` e `isPublicIdFormat` em `public-id.util.ts`.
 
 ### SI-03.14 — Fluxo completo upload → processamento → streaming (E2E com worker real)
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 4 novos passando em `test/video-pipeline.e2e-spec.ts`, com Postgres, Redis, MinIO e FFmpeg reais, API e worker no processo do teste:
+  - `mp4-em-2-partes-chega-a-ready-e-e-reproduzido`.
+    - MP4 de 3s com 65 MiB (`part_count = 2`), partes enviadas por `PUT` nas URLs pré-assinadas e `complete`, sem nenhuma chamada manual ao worker. O job termina `completed`.
+    - `GET /videos/:id`: `ready`, `duration_seconds ≈ 3`, `metadata` (320x240, h264/aac, `sizeBytes` = tamanho do arquivo) e thumbnail que responde `200 image/jpeg` com assinatura `FF D8`.
+    - `stream` → `302`; `Range: bytes=0-99` → `206`, 100 bytes iguais aos do arquivo e `Content-Range: bytes 0-99/{size}`.
+    - `download` → `302`; `200` com o arquivo inteiro e `Content-Disposition: attachment; filename="happy.mp4"`.
+    - Toda requisição à API com corpo nesse fluxo é `application/json` e tem menos de 64 KiB.
+  - `upload-interrompido-e-retomado-sem-reenviar-a-parte-1`: só a parte 1 é enviada; `GET .../upload/parts` lista a parte 1 com o `ETag` e `size_bytes = 64 MiB`; a retomada pede URL só para a parte 2, envia a parte 2 e conclui. Cada parte é enviada uma única vez; o vídeo chega a `ready` e o stream atende `Range`.
+  - `arquivo-que-nao-e-video-termina-failed`: arquivo de texto com `content_type: "video/mp4"` → job `failed`, `status = failed` com `failure_reason` preenchido, sem duração nem thumbnail, e `stream` → `404 VIDEO_NOT_FOUND`.
+  - `dois-videos-tem-public-id-distintos-e-cada-stream-aponta-para-o-proprio-objeto`: dois MP4 de tamanhos diferentes → `public_id` distintos; cada `Location` aponta para `videos/{id}/original` do próprio vídeo, e o `Range` devolve os bytes e o tamanho do próprio arquivo.
+  - Teste de mutação: com o teto de corpo da API em 10 bytes, o cenário feliz falha (corpo JSON de 74 bytes registrado). O valor foi restaurado em seguida.
+
+  Regressão: 299 unit/integration (39 suítes) e 91 e2e (10 suítes) passando. `tsc --noEmit` limpo. `npm run lint` com 0 erros e os 23 warnings pré-existentes, sem nenhum `eslint-disable` em `src`/`test`. `npm run build` ok, com `dist/main.js` e `dist/worker.main.js`.
+- **Observations:**
+  - **Desvio do plano: espera pelo `QueueEvents` em vez de `job.waitUntilFinished`.**
+    - O `enqueue` usa `removeOnComplete: true`, e o worker roda no mesmo processo. O job pode terminar e ser removido antes de o teste obter o `Job` depois do `complete`.
+    - No `bullmq@6.7.8` instalado, `waitUntilFinished` chama `isFinished` primeiro e, para um job que já não existe ("Missing key"), rejeita como falha. O Context7 não indexa essa versão e serviu a doc atual; o comportamento foi conferido em `node_modules/bullmq/dist/cjs/classes/job.js`.
+    - Por isso o harness expõe `waitForJob(videoId)`, que registra os listeners `completed`/`failed` do `QueueEvents` para o `jobId` (= `videoId`) **antes** do `complete`. Continua sendo o `QueueEvents`, como pede o plano, mas sem essa janela de corrida.
+  - **MP4 maior que uma parte.** Como `part_size` é fixo em 64 MiB, um envio em 2 partes exige mais de 64 MiB. `MediaFixtures.video()` ganhou a opção `padToBytes`, que completa o arquivo com um box ISO BMFF `free` no fim. É padding válido de MP4 e o `ffprobe` o ignora: a duração continua 3s e o `size` é o do arquivo com padding. Nenhum binário é commitado (TD-13).
+  - **Harness `test/support/video-pipeline.ts`.**
+    - `createVideoPipeline(suite)` usa `useTestBucket()`, `useTestQueuePrefix(suite)` e `QUEUE_BACKOFF_DELAY_MS=100`, sobe o `AppModule` por `createVideosE2eApp()` (pipes/filtros do `main.ts`) e o `WorkerModule` em um `TestingModule` próprio, com `init()` para iniciar o worker BullMQ.
+    - O prefixo único garante que o `video-worker` do Compose (prefixo `streamtube`) nunca pega esses jobs.
+    - Teardown: `queueEvents.close()`, `queue.obliterate({ force: true })`, `worker.close()` (fecha o worker BullMQ no shutdown), `app.close()` e restauração das variáveis de ambiente. Se `QUEUE_BACKOFF_DELAY_MS` não existia, ela é removida, para não virar a string `"undefined"`.
+    - Helpers `putPart` (devolve o `ETag`), `getStream(location, range?)` e `getDownload(location)` sobre `requestPresigned`. A suíte não faz `fetch` direto em URL pré-assinada.
+  - **"Nenhuma requisição carrega bytes do vídeo".** O harness registra, com um listener `request` incluído antes do Express no servidor HTTP do app (`prependListener`), método, path, `content-type` e `content-length` de toda requisição com corpo. O cenário feliz exige que todas sejam JSON e menores que 64 KiB; qualquer parte de vídeo tem pelo menos 64 MiB.
+  - **`failed` no banco.** Como no SI-03.11, o `onFailed` grava a linha depois do aviso do `QueueEvents`, então o cenário inválido consulta `GET /videos/:id` até `failed` (por até 5s, a cada 50ms).
+  - **Limpeza.** O `afterEach` aborta multiparts abertos e apaga o original e o thumbnail de cada vídeo no bucket `streamtube-test`.
+  - O log `ERROR [VideoProcessor] … final: true` durante a suíte é esperado: é a falha final do cenário de arquivo inválido.
+  - **Arquivos além dos listados no plano:** `padToBytes` em `src/test/media-fixtures.ts`.

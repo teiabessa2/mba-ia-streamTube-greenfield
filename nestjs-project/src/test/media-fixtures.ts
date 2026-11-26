@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { appendFile, mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -11,7 +11,15 @@ export interface VideoFixtureOptions {
   width?: number;
   height?: number;
   withAudio?: boolean;
+  /**
+   * Grows the file to exactly this size with a trailing ISO BMFF `free` box
+   * (padding that players and ffprobe skip), e.g. to exceed one upload part.
+   */
+  padToBytes?: number;
 }
+
+/** 4-byte big-endian size + 4-byte type of an ISO BMFF box header. */
+const BOX_HEADER_BYTES = 8;
 
 /**
  * Generates short media files with the FFmpeg of the dev image, in a temporary
@@ -32,6 +40,7 @@ export class MediaFixtures {
       width = 320,
       height = 240,
       withAudio = true,
+      padToBytes,
     }: VideoFixtureOptions = {},
   ): Promise<string> {
     const output = join(this.dir, name);
@@ -50,6 +59,7 @@ export class MediaFixtures {
     args.push('-movflags', '+faststart', '-y', output);
 
     await execFileAsync('ffmpeg', args);
+    if (padToBytes !== undefined) await this.padWithFreeBox(output, padToBytes);
     return output;
   }
 
@@ -76,6 +86,22 @@ export class MediaFixtures {
     const output = join(this.dir, name);
     await writeFile(output, 'this is not a video\n');
     return output;
+  }
+
+  private async padWithFreeBox(
+    file: string,
+    totalBytes: number,
+  ): Promise<void> {
+    const boxSize = totalBytes - (await stat(file)).size;
+    if (boxSize < BOX_HEADER_BYTES) {
+      throw new Error(
+        `Cannot pad ${file} to ${totalBytes} bytes: it is already too large`,
+      );
+    }
+    const box = Buffer.alloc(boxSize);
+    box.writeUInt32BE(boxSize, 0);
+    box.write('free', 4, 'ascii');
+    await appendFile(file, box);
   }
 
   /** Path inside the fixtures directory for files the test writes. */
