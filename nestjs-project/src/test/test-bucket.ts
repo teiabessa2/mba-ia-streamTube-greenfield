@@ -1,3 +1,5 @@
+import { overrideEnv } from './override-env';
+
 /** Dedicated bucket so tests never touch dev objects (phase-03-videos/TD-13). */
 export const TEST_S3_BUCKET = 'streamtube-test';
 
@@ -7,9 +9,5 @@ export const TEST_S3_BUCKET = 'streamtube-test';
  * returned function restores the previous value.
  */
 export function useTestBucket(): () => void {
-  const previous = process.env.S3_BUCKET;
-  process.env.S3_BUCKET = TEST_S3_BUCKET;
-  return () => {
-    process.env.S3_BUCKET = previous;
-  };
+  return overrideEnv('S3_BUCKET', TEST_S3_BUCKET);
 }

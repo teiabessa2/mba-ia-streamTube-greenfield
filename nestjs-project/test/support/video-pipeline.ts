@@ -11,12 +11,15 @@ import {
   type PresignedResponse,
 } from '../../src/test/presigned-http';
 import { useTestBucket } from '../../src/test/test-bucket';
-import { useTestQueuePrefix } from '../../src/test/test-queue';
+import {
+  useTestBackoffDelay,
+  useTestQueuePrefix,
+} from '../../src/test/test-queue';
 import { WorkerModule } from '../../src/worker/worker.module';
 import { createVideosE2eApp } from './videos-e2e';
 
 /** Retry delay of the `process-video` job inside the pipeline suites. */
-const TEST_BACKOFF_DELAY_MS = '100';
+const TEST_BACKOFF_DELAY_MS = 100;
 
 /** How a job of the `videos` queue ended, as seen by `QueueEvents`. */
 export type JobOutcome =
@@ -56,8 +59,7 @@ export async function createVideoPipeline(
 ): Promise<VideoPipeline> {
   const restoreBucket = useTestBucket();
   const queuePrefix = useTestQueuePrefix(suite);
-  const previousBackoff = process.env.QUEUE_BACKOFF_DELAY_MS;
-  process.env.QUEUE_BACKOFF_DELAY_MS = TEST_BACKOFF_DELAY_MS;
+  const restoreBackoff = useTestBackoffDelay(TEST_BACKOFF_DELAY_MS);
 
   const app = await createVideosE2eApp();
   const worker: TestingModule = await Test.createTestingModule({
@@ -132,11 +134,7 @@ export async function createVideoPipeline(
       await queue.obliterate({ force: true });
       await worker.close(); // closes the BullMQ worker (onApplicationShutdown)
       await app.close();
-      if (previousBackoff === undefined) {
-        delete process.env.QUEUE_BACKOFF_DELAY_MS;
-      } else {
-        process.env.QUEUE_BACKOFF_DELAY_MS = previousBackoff;
-      }
+      restoreBackoff();
       queuePrefix.restore();
       restoreBucket();
     },

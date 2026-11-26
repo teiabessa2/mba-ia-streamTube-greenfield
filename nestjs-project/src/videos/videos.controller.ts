@@ -43,6 +43,29 @@ const PUBLIC_ID_PARAM = {
   example: 'dQw4w9WgXcQ',
 } as const;
 
+const VIDEO_ID_PARAM = {
+  name: 'id',
+  format: 'uuid',
+  description: 'Video id',
+} as const;
+
+/** Error descriptions shared by several routes. */
+const ERROR_DESCRIPTIONS = {
+  UNAUTHORIZED: 'Missing or invalid access token',
+  OWNED_NOT_FOUND:
+    'Video not found or not owned by the caller (VIDEO_NOT_FOUND)',
+  NOT_IN_DRAFT: 'Video is no longer in draft (VIDEO_NOT_IN_DRAFT)',
+  INVALID_VIDEO_ID: 'Invalid video id (VALIDATION_ERROR)',
+} as const;
+
+/** An error response documented with the uniform error envelope. */
+const ApiErrorResponse = (status: number, description: string) =>
+  ApiResponse({
+    status,
+    description,
+    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
+  });
+
 /** 302 with the presigned `Location` + the uniform 404 of the playback routes. */
 const ApiPlaybackResponses = (location: string) =>
   applyDecorators(
@@ -56,12 +79,10 @@ const ApiPlaybackResponses = (location: string) =>
         },
       },
     }),
-    ApiResponse({
-      status: 404,
-      description:
-        'Unknown or malformed publicId, or video not ready: draft, processing or failed (VIDEO_NOT_FOUND)',
-      schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
-    }),
+    ApiErrorResponse(
+      404,
+      'Unknown or malformed publicId, or video not ready: draft, processing or failed (VIDEO_NOT_FOUND)',
+    ),
   );
 
 @ApiTags('videos')
@@ -83,27 +104,16 @@ export class VideosController {
     description: 'Draft created and multipart upload opened',
     type: InitiateUploadResponseDto,
   })
-  @ApiResponse({
-    status: 400,
-    description: 'Validation failed (VALIDATION_ERROR)',
-    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
-  })
-  @ApiResponse({
-    status: 401,
-    description: 'Missing or invalid access token',
-    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
-  })
-  @ApiResponse({
-    status: 413,
-    description: 'Declared size above 10737418240 bytes (VIDEO_TOO_LARGE)',
-    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
-  })
-  @ApiResponse({
-    status: 415,
-    description:
-      'Content type or file extension outside the allowlist (UNSUPPORTED_VIDEO_FORMAT)',
-    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
-  })
+  @ApiErrorResponse(400, 'Validation failed (VALIDATION_ERROR)')
+  @ApiErrorResponse(401, ERROR_DESCRIPTIONS.UNAUTHORIZED)
+  @ApiErrorResponse(
+    413,
+    'Declared size above 10737418240 bytes (VIDEO_TOO_LARGE)',
+  )
+  @ApiErrorResponse(
+    415,
+    'Content type or file extension outside the allowlist (UNSUPPORTED_VIDEO_FORMAT)',
+  )
   async initiateUpload(
     @CurrentUser() user: JwtPayload,
     @Body() dto: InitiateUploadDto,
@@ -119,34 +129,20 @@ export class VideosController {
     description:
       'Returns presigned PUT URLs (valid for 3600s) for the requested parts of a draft owned by the caller, in ascending part order. Also used to renew expired URLs.',
   })
-  @ApiParam({ name: 'id', format: 'uuid', description: 'Video id' })
+  @ApiParam(VIDEO_ID_PARAM)
   @ApiBody({ type: PresignPartsDto })
   @ApiResponse({
     status: 200,
     description: 'Presigned part URLs',
     type: PresignPartsResponseDto,
   })
-  @ApiResponse({
-    status: 400,
-    description:
-      'Validation failed (VALIDATION_ERROR) or a part number above part_count (INVALID_PART_NUMBER)',
-    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
-  })
-  @ApiResponse({
-    status: 401,
-    description: 'Missing or invalid access token',
-    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
-  })
-  @ApiResponse({
-    status: 404,
-    description: 'Video not found or not owned by the caller (VIDEO_NOT_FOUND)',
-    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
-  })
-  @ApiResponse({
-    status: 409,
-    description: 'Video is no longer in draft (VIDEO_NOT_IN_DRAFT)',
-    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
-  })
+  @ApiErrorResponse(
+    400,
+    'Validation failed (VALIDATION_ERROR) or a part number above part_count (INVALID_PART_NUMBER)',
+  )
+  @ApiErrorResponse(401, ERROR_DESCRIPTIONS.UNAUTHORIZED)
+  @ApiErrorResponse(404, ERROR_DESCRIPTIONS.OWNED_NOT_FOUND)
+  @ApiErrorResponse(409, ERROR_DESCRIPTIONS.NOT_IN_DRAFT)
   async presignParts(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
@@ -162,32 +158,16 @@ export class VideosController {
     description:
       'Lists the parts the storage already received for a draft owned by the caller, so an interrupted upload can be resumed.',
   })
-  @ApiParam({ name: 'id', format: 'uuid', description: 'Video id' })
+  @ApiParam(VIDEO_ID_PARAM)
   @ApiResponse({
     status: 200,
     description: 'Parts received so far, in ascending part order',
     type: UploadedPartsResponseDto,
   })
-  @ApiResponse({
-    status: 400,
-    description: 'Invalid video id (VALIDATION_ERROR)',
-    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
-  })
-  @ApiResponse({
-    status: 401,
-    description: 'Missing or invalid access token',
-    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
-  })
-  @ApiResponse({
-    status: 404,
-    description: 'Video not found or not owned by the caller (VIDEO_NOT_FOUND)',
-    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
-  })
-  @ApiResponse({
-    status: 409,
-    description: 'Video is no longer in draft (VIDEO_NOT_IN_DRAFT)',
-    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
-  })
+  @ApiErrorResponse(400, ERROR_DESCRIPTIONS.INVALID_VIDEO_ID)
+  @ApiErrorResponse(401, ERROR_DESCRIPTIONS.UNAUTHORIZED)
+  @ApiErrorResponse(404, ERROR_DESCRIPTIONS.OWNED_NOT_FOUND)
+  @ApiErrorResponse(409, ERROR_DESCRIPTIONS.NOT_IN_DRAFT)
   async listUploadedParts(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
@@ -203,35 +183,23 @@ export class VideosController {
     description:
       'Completes the multipart upload of a draft owned by the caller, checks the real object size against size_bytes, moves the video to processing and queues the process-video job. Repeating the call does not queue the job again.',
   })
-  @ApiParam({ name: 'id', format: 'uuid', description: 'Video id' })
+  @ApiParam(VIDEO_ID_PARAM)
   @ApiBody({ type: CompleteUploadDto })
   @ApiResponse({
     status: 200,
     description: 'Upload completed; video is processing',
     type: CompleteUploadResponseDto,
   })
-  @ApiResponse({
-    status: 400,
-    description:
-      'Validation failed (VALIDATION_ERROR), parts rejected by the storage (INVALID_UPLOAD_PARTS; the draft is kept) or real size different from size_bytes (UPLOAD_SIZE_MISMATCH; object and draft are deleted)',
-    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
-  })
-  @ApiResponse({
-    status: 401,
-    description: 'Missing or invalid access token',
-    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
-  })
-  @ApiResponse({
-    status: 404,
-    description: 'Video not found or not owned by the caller (VIDEO_NOT_FOUND)',
-    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
-  })
-  @ApiResponse({
-    status: 409,
-    description:
-      'Video is no longer in draft, e.g. a repeated complete (VIDEO_NOT_IN_DRAFT)',
-    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
-  })
+  @ApiErrorResponse(
+    400,
+    'Validation failed (VALIDATION_ERROR), parts rejected by the storage (INVALID_UPLOAD_PARTS; the draft is kept) or real size different from size_bytes (UPLOAD_SIZE_MISMATCH; object and draft are deleted)',
+  )
+  @ApiErrorResponse(401, ERROR_DESCRIPTIONS.UNAUTHORIZED)
+  @ApiErrorResponse(404, ERROR_DESCRIPTIONS.OWNED_NOT_FOUND)
+  @ApiErrorResponse(
+    409,
+    'Video is no longer in draft, e.g. a repeated complete (VIDEO_NOT_IN_DRAFT)',
+  )
   async completeUpload(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
@@ -248,28 +216,12 @@ export class VideosController {
     description:
       'Aborts the multipart upload of a draft owned by the caller, discarding the parts already sent to the storage, and deletes the draft.',
   })
-  @ApiParam({ name: 'id', format: 'uuid', description: 'Video id' })
+  @ApiParam(VIDEO_ID_PARAM)
   @ApiResponse({ status: 204, description: 'Upload aborted and draft deleted' })
-  @ApiResponse({
-    status: 400,
-    description: 'Invalid video id (VALIDATION_ERROR)',
-    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
-  })
-  @ApiResponse({
-    status: 401,
-    description: 'Missing or invalid access token',
-    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
-  })
-  @ApiResponse({
-    status: 404,
-    description: 'Video not found or not owned by the caller (VIDEO_NOT_FOUND)',
-    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
-  })
-  @ApiResponse({
-    status: 409,
-    description: 'Video is no longer in draft (VIDEO_NOT_IN_DRAFT)',
-    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
-  })
+  @ApiErrorResponse(400, ERROR_DESCRIPTIONS.INVALID_VIDEO_ID)
+  @ApiErrorResponse(401, ERROR_DESCRIPTIONS.UNAUTHORIZED)
+  @ApiErrorResponse(404, ERROR_DESCRIPTIONS.OWNED_NOT_FOUND)
+  @ApiErrorResponse(409, ERROR_DESCRIPTIONS.NOT_IN_DRAFT)
   async abortUpload(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
@@ -284,23 +236,11 @@ export class VideosController {
     description:
       'Returns the status (draft, processing, ready or failed) and the details of a video owned by the caller: extracted duration and metadata, failure reason and a presigned thumbnail URL (valid for 3600s).',
   })
-  @ApiParam({ name: 'id', format: 'uuid', description: 'Video id' })
+  @ApiParam(VIDEO_ID_PARAM)
   @ApiOkResponse({ description: 'Video detail', type: VideoResponseDto })
-  @ApiResponse({
-    status: 400,
-    description: 'Invalid video id (VALIDATION_ERROR)',
-    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
-  })
-  @ApiResponse({
-    status: 401,
-    description: 'Missing or invalid access token',
-    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
-  })
-  @ApiResponse({
-    status: 404,
-    description: 'Video not found or not owned by the caller (VIDEO_NOT_FOUND)',
-    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
-  })
+  @ApiErrorResponse(400, ERROR_DESCRIPTIONS.INVALID_VIDEO_ID)
+  @ApiErrorResponse(401, ERROR_DESCRIPTIONS.UNAUTHORIZED)
+  @ApiErrorResponse(404, ERROR_DESCRIPTIONS.OWNED_NOT_FOUND)
   async getOwned(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,

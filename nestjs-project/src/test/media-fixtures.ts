@@ -43,7 +43,7 @@ export class MediaFixtures {
       padToBytes,
     }: VideoFixtureOptions = {},
   ): Promise<string> {
-    const output = join(this.dir, name);
+    const output = this.path(name);
     const video = `testsrc=duration=${durationSeconds}:size=${width}x${height}:rate=25`;
     const args = ['-v', 'error', '-f', 'lavfi', '-i', video];
     if (withAudio) {
@@ -65,7 +65,7 @@ export class MediaFixtures {
 
   /** A small JPEG (one `testsrc` frame), e.g. a thumbnail stored directly. */
   async jpeg(name: string): Promise<string> {
-    const output = join(this.dir, name);
+    const output = this.path(name);
     await execFileAsync('ffmpeg', [
       '-v',
       'error',
@@ -83,7 +83,7 @@ export class MediaFixtures {
 
   /** A plain text file with a video extension (not decodable as media). */
   async fakeVideo(name: string): Promise<string> {
-    const output = join(this.dir, name);
+    const output = this.path(name);
     await writeFile(output, 'this is not a video\n');
     return output;
   }

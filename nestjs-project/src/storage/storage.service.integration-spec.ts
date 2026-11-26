@@ -4,12 +4,11 @@ import { ConfigModule } from '@nestjs/config';
 import { Test, type TestingModule } from '@nestjs/testing';
 import storageConfig from '../config/storage.config';
 import { requestPresigned } from '../test/presigned-http';
+import { TEST_S3_BUCKET, useTestBucket } from '../test/test-bucket';
 import { StorageInvalidPartsError } from './storage.errors';
 import { StorageModule } from './storage.module';
 import { StorageService } from './storage.service';
 
-/** Dedicated bucket so tests never touch dev objects (phase-03-videos/TD-13). */
-const TEST_BUCKET = 'streamtube-test';
 /** S3 minimum size for every part except the last one. */
 const MIN_PART_SIZE = 5 * 1024 * 1024;
 
@@ -19,7 +18,7 @@ describe('StorageService (MinIO)', () => {
   let moduleRef: TestingModule;
   let storage: StorageService;
   let warnSpy: jest.SpyInstance;
-  let originalBucket: string | undefined;
+  let restoreBucket: () => void;
   const createdKeys: string[] = [];
 
   const newKey = () => {
@@ -39,8 +38,7 @@ describe('StorageService (MinIO)', () => {
   };
 
   beforeAll(async () => {
-    originalBucket = process.env.S3_BUCKET;
-    process.env.S3_BUCKET = TEST_BUCKET;
+    restoreBucket = useTestBucket();
     warnSpy = jest.spyOn(Logger.prototype, 'warn');
 
     moduleRef = await Test.createTestingModule({
@@ -56,13 +54,13 @@ describe('StorageService (MinIO)', () => {
   afterAll(async () => {
     for (const key of createdKeys) await storage.deleteObject(key);
     await moduleRef.close();
-    process.env.S3_BUCKET = originalBucket;
+    restoreBucket();
     warnSpy.mockRestore();
   });
 
   describe('boot (ensureBucket)', () => {
     it('should leave a private bucket that rejects anonymous GET with 403', async () => {
-      const res = await fetch(`${process.env.S3_ENDPOINT}/${TEST_BUCKET}/`);
+      const res = await fetch(`${process.env.S3_ENDPOINT}/${TEST_S3_BUCKET}/`);
       expect(res.status).toBe(403);
     });
 

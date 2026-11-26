@@ -4,6 +4,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { QueryFailedError, Repository } from 'typeorm';
 import { ChannelsService } from '../channels/channels.service';
+import { attachmentDisposition } from '../common/http/content-disposition.util';
 import {
   StorageInvalidPartsError,
   StorageUploadNotFoundError,
@@ -67,27 +68,11 @@ const isAllowedFormat = (fileName: string, contentType: string): boolean => {
   );
 };
 
-const DEL_CHAR_CODE = 0x7f;
-const FIRST_PRINTABLE_CHAR_CODE = 0x20;
+/** A draft whose multipart upload is still open in the storage. */
+type OpenDraft = Video & { upload_id: string };
 
-/** Whether `char` would break a header quoted-string: `"`, `\` or a control character. */
-const isUnsafeInQuotedString = (char: string): boolean => {
-  const code = char.charCodeAt(0);
-  return (
-    code < FIRST_PRINTABLE_CHAR_CODE ||
-    code === DEL_CHAR_CODE ||
-    char === '"' ||
-    char === '\\'
-  );
-};
-
-/** `attachment; filename="..."` with the unsafe characters removed. */
-const attachmentDisposition = (fileName: string): string => {
-  const safeName = Array.from(fileName)
-    .filter((char) => !isUnsafeInQuotedString(char))
-    .join('');
-  return `attachment; filename="${safeName}"`;
-};
+const isOpenDraft = (video: Video): video is OpenDraft =>
+  video.status === VideoStatus.DRAFT && !!video.upload_id;
 
 @Injectable()
 export class VideosService {
@@ -213,11 +198,9 @@ export class VideosService {
   }
 
   /** Loads a draft (with an open multipart upload) owned by the caller. */
-  async findOwnedDraft(userId: string, id: string): Promise<Video> {
+  async findOwnedDraft(userId: string, id: string): Promise<OpenDraft> {
     const video = await this.findOwned(userId, id);
-    if (video.status !== VideoStatus.DRAFT || !video.upload_id) {
-      throw new VideoNotInDraftException();
-    }
+    if (!isOpenDraft(video)) throw new VideoNotInDraftException();
     return video;
   }
 
@@ -233,14 +216,13 @@ export class VideosService {
     }
 
     const expiresIn = VIDEO_UPLOAD_LIMITS.PART_URL_EXPIRES_IN_S;
-    const uploadId = video.upload_id as string;
     const sorted = [...partNumbers].sort((a, b) => a - b);
     const parts = await Promise.all(
       sorted.map(async (partNumber) => ({
         part_number: partNumber,
         url: await this.storageService.presignUploadPart(
           video.storage_key,
-          uploadId,
+          video.upload_id,
           partNumber,
           expiresIn,
         ),
@@ -257,7 +239,7 @@ export class VideosService {
     const video = await this.findOwnedDraft(userId, id);
     const uploaded = await this.storageService.listParts(
       video.storage_key,
-      video.upload_id as string,
+      video.upload_id,
     );
     return {
       parts: uploaded
@@ -287,7 +269,7 @@ export class VideosService {
     try {
       await this.storageService.completeMultipartUpload(
         video.storage_key,
-        video.upload_id as string,
+        video.upload_id,
         parts.map((p) => ({ partNumber: p.part_number, etag: p.etag })),
       );
     } catch (err) {
@@ -333,7 +315,7 @@ export class VideosService {
     try {
       await this.storageService.abortMultipartUpload(
         video.storage_key,
-        video.upload_id as string,
+        video.upload_id,
       );
     } catch (err) {
       // Already gone in the storage (expired/aborted): the end state is the same.

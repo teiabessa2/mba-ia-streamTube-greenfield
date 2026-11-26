@@ -6,16 +6,8 @@ export enum VideoStatus {
   FAILED = 'failed',
 }
 
-/** Technical metadata extracted by `ffprobe` (phase-03-videos/TD-05). */
-export interface VideoMetadata {
-  width: number;
-  height: number;
-  videoCodec: string;
-  audioCodec?: string;
-  bitrate: number;
-  formatName: string;
-  sizeBytes: number;
-}
+/** Technical metadata extracted by `ffprobe`, stored as-is (phase-03-videos/TD-05). */
+export type { MediaMetadata as VideoMetadata } from '../media/media.types';
 
 /** Payload of the `process-video` job (see Events/Messages). */
 export interface ProcessVideoJobData {

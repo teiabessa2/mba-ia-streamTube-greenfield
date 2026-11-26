@@ -141,6 +141,31 @@ describe('MediaService (FFmpeg + MinIO)', () => {
     }, 15_000);
   });
 
+  describe('presigned URL redaction', () => {
+    const SIGNED_URL = /X-Amz-|https?:\/\//;
+
+    it('should keep the presigned URL out of a probe error', async () => {
+      const url = await serve(await fixtures.fakeVideo('redact-probe.mp4'));
+
+      const error = await media.probe(url).catch((err: unknown) => err);
+
+      expect((error as Error).message).toContain('<source>');
+      expect((error as Error).message).not.toMatch(SIGNED_URL);
+    }, 30_000);
+
+    it('should keep the presigned URL out of an extractFrame error', async () => {
+      const url = await serve(await fixtures.fakeVideo('redact-frame.mp4'));
+
+      const error = await media
+        .extractFrame(url, 1, fixtures.path('redact.jpg'))
+        .catch((err: unknown) => err);
+
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toContain('<source>');
+      expect((error as Error).message).not.toMatch(SIGNED_URL);
+    }, 30_000);
+  });
+
   describe('extractFrame', () => {
     it('should write a non-empty JPEG read from an HTTP URL', async () => {
       const url = await serve(await fixtures.video('frame-source.mp4'));

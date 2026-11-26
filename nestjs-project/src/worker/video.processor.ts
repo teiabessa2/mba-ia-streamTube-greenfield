@@ -15,7 +15,7 @@ import { StorageService } from '../storage/storage.service';
 import { Video } from '../videos/entities/video.entity';
 import { videoStorageKeys } from '../videos/videos.constants';
 import { type ProcessVideoJobData, VideoStatus } from '../videos/videos.types';
-import { toFailureReason } from './failure-reason.util';
+import { redactSourceUrls } from '../media/redact-source-urls.util';
 import { THUMBNAIL } from './worker.constants';
 
 /**
@@ -86,7 +86,7 @@ export class VideoProcessor extends WorkerHost {
     const attempts = job.opts.attempts ?? 1;
     const final =
       err instanceof UnrecoverableError || job.attemptsMade >= attempts;
-    const reason = toFailureReason(err.message);
+    const reason = redactSourceUrls(err.message);
     const context = {
       videoId,
       attemptsMade: job.attemptsMade,

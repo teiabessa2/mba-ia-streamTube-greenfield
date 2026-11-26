@@ -1,14 +1,8 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule, type ConfigType } from '@nestjs/config';
+import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import appConfig from '../config/app.config';
-import authConfig from '../config/auth.config';
-import databaseConfig from '../config/database.config';
-import { envValidationSchema } from '../config/env.validation';
-import mailConfig from '../config/mail.config';
-import queueConfig from '../config/queue.config';
-import storageConfig from '../config/storage.config';
-import swaggerConfig from '../config/swagger.config';
+import { configModuleOptions } from '../config/config-module.options';
+import { typeOrmModuleOptions } from '../database/typeorm-module.options';
 import { MediaModule } from '../media/media.module';
 import { QueueModule } from '../queue/queue.module';
 import { StorageModule } from '../storage/storage.module';
@@ -23,35 +17,9 @@ import { VideoProcessor } from './video.processor';
  */
 @Module({
   imports: [
-    // Same load/validation as the API, so both fail fast on the same .env.
-    ConfigModule.forRoot({
-      isGlobal: true,
-      load: [
-        appConfig,
-        authConfig,
-        databaseConfig,
-        mailConfig,
-        swaggerConfig,
-        storageConfig,
-        queueConfig,
-      ],
-      validationSchema: envValidationSchema,
-      validationOptions: { allowUnknown: true, abortEarly: false },
-    }),
-    TypeOrmModule.forRootAsync({
-      imports: [ConfigModule],
-      inject: [databaseConfig.KEY],
-      useFactory: (dbConfig: ConfigType<typeof databaseConfig>) => ({
-        type: 'postgres',
-        host: dbConfig.host,
-        port: dbConfig.port,
-        username: dbConfig.username,
-        password: dbConfig.password,
-        database: dbConfig.name,
-        autoLoadEntities: true,
-        synchronize: false,
-      }),
-    }),
+    // Same load/validation and connection as the API, so both fail fast on the same .env.
+    ConfigModule.forRoot(configModuleOptions),
+    TypeOrmModule.forRootAsync(typeOrmModuleOptions),
     TypeOrmModule.forFeature([Video]),
     // Registers Channel and User, the entities behind Video#channel.
     UsersModule,

@@ -9,6 +9,7 @@ import {
 } from './media.constants';
 import { InvalidMediaError } from './media.errors';
 import type { MediaOptions, ProbeResult } from './media.types';
+import { redactSourceUrls } from './redact-source-urls.util';
 
 const execFileAsync = promisify(execFile);
 
@@ -93,24 +94,29 @@ export class MediaService {
     atSeconds: number,
     outputPath: string,
   ): Promise<void> {
-    await execFileAsync(
-      'ffmpeg',
-      [
-        '-v',
-        'error',
-        '-ss',
-        String(atSeconds),
-        '-i',
-        url,
-        '-frames:v',
-        '1',
-        '-q:v',
-        '2',
-        '-y',
-        outputPath,
-      ],
-      { timeout: this.options.frameTimeoutMs },
-    );
+    try {
+      await execFileAsync(
+        'ffmpeg',
+        [
+          '-v',
+          'error',
+          '-ss',
+          String(atSeconds),
+          '-i',
+          url,
+          '-frames:v',
+          '1',
+          '-q:v',
+          '2',
+          '-y',
+          outputPath,
+        ],
+        { timeout: this.options.frameTimeoutMs },
+      );
+    } catch (error) {
+      // A new Error: the execFile one also carries the URL in `cmd`/`stderr`/`stack`.
+      throw new Error(redactSourceUrls((error as Error).message));
+    }
 
     // ffmpeg exits 0 with an empty output when the seek lands past the end.
     const { size } = await stat(outputPath);
@@ -155,10 +161,12 @@ export class MediaService {
       INVALID_MEDIA_STDERR_PATTERNS.some((pattern) => pattern.test(stderr))
     ) {
       return new InvalidMediaError(
-        `ffprobe could not read the file: ${stderr.trim()}`,
+        `ffprobe could not read the file: ${redactSourceUrls(stderr.trim())}`,
       );
     }
-    return new Error(`ffprobe failed: ${stderr.trim() || error.message}`);
+    return new Error(
+      `ffprobe failed: ${redactSourceUrls(stderr.trim() || error.message)}`,
+    );
   }
 
   private parseProbeOutput(stdout: string): FfprobeOutput {

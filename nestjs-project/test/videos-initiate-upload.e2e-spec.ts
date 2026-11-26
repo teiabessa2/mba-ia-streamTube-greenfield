@@ -1,18 +1,14 @@
-import { INestApplication, ValidationPipe } from '@nestjs/common';
-import { Test } from '@nestjs/testing';
+import { INestApplication } from '@nestjs/common';
 import { ThrottlerStorage, ThrottlerStorageService } from '@nestjs/throttler';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { DataSource } from 'typeorm';
-import { AppModule } from '../src/app.module';
 import { Channel } from '../src/channels/entities/channel.entity';
-import { DomainExceptionFilter } from '../src/common/filters/domain-exception.filter';
-import { ValidationExceptionFilter } from '../src/common/filters/validation-exception.filter';
-import { MailService } from '../src/mail/mail.service';
 import { StorageService } from '../src/storage/storage.service';
 import { cleanAllTables } from '../src/test/create-test-data-source';
 import { useTestBucket } from '../src/test/test-bucket';
 import { Video } from '../src/videos/entities/video.entity';
+import { createVideosE2eApp, registerAndLogin } from './support/videos-e2e';
 
 interface InitiateUploadBody {
   id: string;
@@ -24,7 +20,6 @@ interface InitiateUploadBody {
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-const PASSWORD = 'password123';
 
 describe('videos-initiate-upload', () => {
   let app: INestApplication<App>;
@@ -38,28 +33,10 @@ describe('videos-initiate-upload', () => {
 
   beforeAll(async () => {
     restoreBucket = useTestBucket();
-    const moduleFixture = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
-
-    app = moduleFixture.createNestApplication();
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        transform: true,
-      }),
-    );
-    app.useGlobalFilters(
-      new DomainExceptionFilter(),
-      new ValidationExceptionFilter(),
-    );
-    await app.init();
-
-    dataSource = moduleFixture.get(DataSource);
-    storageService = moduleFixture.get(StorageService);
-    throttlerStorage =
-      moduleFixture.get<ThrottlerStorageService>(ThrottlerStorage);
+    app = await createVideosE2eApp();
+    dataSource = app.get(DataSource);
+    storageService = app.get(StorageService);
+    throttlerStorage = app.get<ThrottlerStorageService>(ThrottlerStorage);
   }, 60_000);
 
   afterAll(async () => {
@@ -70,37 +47,13 @@ describe('videos-initiate-upload', () => {
     restoreBucket();
   });
 
-  /** register → confirm (token captured from the mail) → login (phase 02 flow). */
-  async function authenticate(email: string): Promise<void> {
-    let confirmationToken = '';
-    jest
-      .spyOn(app.get(MailService), 'sendConfirmationEmail')
-      .mockImplementationOnce((_e: string, _n: string, token: string) => {
-        confirmationToken = token;
-        return Promise.resolve();
-      });
-    const register = await request(app.getHttpServer())
-      .post('/auth/register')
-      .send({ email, password: PASSWORD })
-      .expect(201);
-    userId = (register.body as { id: string }).id;
-
-    await request(app.getHttpServer())
-      .get('/auth/confirm-email')
-      .query({ token: confirmationToken })
-      .expect(204);
-
-    const login = await request(app.getHttpServer())
-      .post('/auth/login')
-      .send({ email, password: PASSWORD })
-      .expect(200);
-    accessToken = (login.body as { access_token: string }).access_token;
-  }
-
   beforeEach(async () => {
     await cleanAllTables(dataSource);
     throttlerStorage.storage.clear();
-    await authenticate('uploader@example.com');
+    ({ userId, accessToken } = await registerAndLogin(
+      app,
+      'uploader@example.com',
+    ));
   });
 
   const countVideos = () => dataSource.getRepository(Video).count();

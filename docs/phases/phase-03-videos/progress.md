@@ -306,3 +306,42 @@
   - **Limpeza.** O `afterEach` aborta multiparts abertos e apaga o original e o thumbnail de cada vídeo no bucket `streamtube-test`.
   - O log `ERROR [VideoProcessor] … final: true` durante a suíte é esperado: é a falha final do cenário de arquivo inválido.
   - **Arquivos além dos listados no plano:** `padToBytes` em `src/test/media-fixtures.ts`.
+
+## Fechamento — revisão `/simplify` da Fase 03
+- **Status:** completed
+- **Escopo:** código da Fase 03 (`src/videos`, `src/storage`, `src/queue`, `src/media`, `src/worker`, `src/config`, `src/test`, suítes de vídeo em `test/`), mais `src/app.module.ts` e `src/database/` para a configuração compartilhada. `src/auth`, `src/users`, `src/mail` e `eslint.config.mjs` não foram tocados. Revisão em 4 ângulos: reuso, simplificação, eficiência e altitude.
+- **Verificação:** 304 unit/integration (40 suítes) e 91 e2e (10 suítes) passando. `tsc --noEmit` limpo. `npm run lint` com 0 erros e os 23 warnings pré-existentes de `src/auth`. `npm run build` gera `dist/main.js` e `dist/worker.main.js`. Nenhum `eslint-disable` em `src`/`test`. Nenhuma expectativa de teste existente mudou. O `openapi.json` regenerado ficou idêntico ao commitado.
+- **Follow-ups registrados, agora resolvidos:**
+  - **URL pré-assinada nos erros do `MediaService`** (SI-03.11).
+    - `toFailureReason` foi movido de `src/worker/failure-reason.util.ts` para `src/media/redact-source-urls.util.ts`, com o nome `redactSourceUrls`. Ele fica em `src/media` porque conhece o separador `<input>: ` do ffmpeg. O spec foi junto, com as mesmas expectativas.
+    - O `MediaService` agora redige na própria fronteira:
+      - `translateProbeError` passa o stderr por `redactSourceUrls`.
+      - `extractFrame` captura o erro do `execFile` e lança um `Error` novo com a mensagem redigida. Ele é novo para que `cmd`, `stderr` e `stack` do erro original, que também carregam a URL, não sigam adiante.
+    - Com isso o `failedReason` e o `stacktrace` que o BullMQ grava no Redis não carregam mais host interno, bucket nem assinatura.
+    - O `onFailed` mantém a chamada como segunda barreira. A função é idempotente.
+    - Testes: 2 novos de integração em `media.service.integration-spec.ts`, um para probe e um para extractFrame. Em ambos a mensagem contém `<source>` e não contém `X-Amz-`/`http(s)://`. Teste de mutação: sem a redação os dois falham.
+  - **Configuração duplicada entre `AppModule` e `WorkerModule`** (SI-03.10).
+    - `src/config/config-module.options.ts` exporta `configModuleOptions`.
+    - `src/database/typeorm-module.options.ts` exporta `typeOrmModuleOptions`.
+    - Os dois módulos raiz usam `ConfigModule.forRoot(configModuleOptions)` e `TypeOrmModule.forRootAsync(typeOrmModuleOptions)`. Os valores são os mesmos de antes.
+- **Outras simplificações:**
+  - **`findOwnedDraft`** devolve `OpenDraft` (`Video & { upload_id: string }`), que o type guard `isOpenDraft` estreita. Os 4 casts `video.upload_id as string` e a variável `uploadId` saíram.
+  - **`attachmentDisposition`**, que monta o quoted-string do `Content-Disposition`, saiu do `VideosService` para `src/common/http/content-disposition.util.ts`, com um spec unitário novo de 3 casos. É um helper de protocolo HTTP, não regra de vídeos.
+  - **`VideosController`:** os 24 blocos `@ApiResponse({ status, description, schema: ApiErrorEnvelope })` viraram `ApiErrorResponse(status, description)`. As descrições repetidas foram para `ERROR_DESCRIPTIONS` e o `@ApiParam` do `id` para `VIDEO_ID_PARAM`. O Swagger gerado é idêntico.
+  - **`VideoMetadata`** agora é um alias de `MediaMetadata`, em vez de uma segunda interface com os mesmos 7 campos.
+  - **Env de teste:** novo `src/test/override-env.ts`.
+    - `useTestBucket`, `useTestQueuePrefix` e o novo `useTestBackoffDelay` usam `overrideEnv`.
+    - `video.processor.integration-spec.ts` e `test/support/video-pipeline.ts` usam `useTestBackoffDelay`.
+    - Os restores manuais antigos atribuíam `undefined`, o que deixava a string `"undefined"` em uma variável que antes não existia. Agora a variável é removida.
+  - **`storage.service.integration-spec.ts`** usa `TEST_S3_BUCKET`/`useTestBucket` em vez da própria constante `'streamtube-test'` (follow-up do SI-03.5).
+  - **`test/videos-initiate-upload.e2e-spec.ts`** usa `createVideosE2eApp()`/`registerAndLogin()` de `test/support/videos-e2e.ts` em vez do bootstrap inline (follow-up do SI-03.6).
+  - **`MediaFixtures`** usa `this.path(name)` nos três geradores.
+- **Achados não aplicados:**
+  - **`isPgUniqueViolationOnColumn` duplicado** entre `videos.service.ts` e `channels.service.ts` (follow-up do SI-03.5). A extração mexe em `src/channels`, fora do escopo da revisão, e fica como task separada.
+  - **`findOwned` em uma única query** com join em `Video#channel`, em vez de duas idas ao banco. Exigiria mudar expectativas de `videos.service.spec.ts`. Fica como task separada.
+  - **`WorkerModule` importa `UsersModule`** só para registrar `Channel`/`User`. Mantido porque a regra do projeto é que a entidade seja registrada pelo módulo dono.
+  - **`sleep` local no `StorageService`.** Não foi trocado por `node:timers/promises`, porque o spec usa fake timers do Jest e essa troca pode deixá-los sem efeito.
+  - **`storageErrorName` sem leitor** e **`STORAGE_DEFAULTS.UPLOAD_PART_EXPIRES_IN_S`** redundante com `VIDEO_UPLOAD_LIMITS.PART_URL_EXPIRES_IN_S`. Ambos exigiriam mudar a montagem dos testes.
+  - **Literais `67108864` nos testes.** Ficam como estão: aparecem em expectativas e fixam o valor normativo da TD-03 sem depender da constante.
+  - **Setup e cleanup repetidos nas suítes e2e de vídeo** (`abortOpenUploads`, criação de rascunho, `putPart`, `getPlayback`, `QueueEvents`) e **cleanup serial** com `for…await`. Ficam como task separada de consolidação dos helpers de teste.
+  - **`VIDEO_FORMAT_ALLOWLIST` com casts `as readonly string[]`.** Mantido, porque a convenção do projeto pede `as const` nas constantes.

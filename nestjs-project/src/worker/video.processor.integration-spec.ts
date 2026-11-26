@@ -24,7 +24,7 @@ import {
 } from '../test/create-test-data-source';
 import { MediaFixtures } from '../test/media-fixtures';
 import { TEST_S3_BUCKET, useTestBucket } from '../test/test-bucket';
-import { useTestQueuePrefix } from '../test/test-queue';
+import { useTestBackoffDelay, useTestQueuePrefix } from '../test/test-queue';
 import { User } from '../users/entities/user.entity';
 import { Video } from '../videos/entities/video.entity';
 import { generatePublicId } from '../videos/public-id.util';
@@ -243,7 +243,7 @@ describe('VideoProcessor (integration: Postgres + MinIO + FFmpeg)', () => {
     let producer: VideoProcessingQueue;
     let workerStorage: StorageService;
     let testPrefix: ReturnType<typeof useTestQueuePrefix>;
-    let previousBackoff: string | undefined;
+    let restoreBackoff: () => void;
 
     /** onFailed runs on the worker after the QueueEvents notice: wait for the row. */
     const waitForStatus = async (
@@ -270,8 +270,7 @@ describe('VideoProcessor (integration: Postgres + MinIO + FFmpeg)', () => {
 
     beforeAll(async () => {
       testPrefix = useTestQueuePrefix('video-processor');
-      previousBackoff = process.env.QUEUE_BACKOFF_DELAY_MS;
-      process.env.QUEUE_BACKOFF_DELAY_MS = '100';
+      restoreBackoff = useTestBackoffDelay(100);
 
       queueModule = await Test.createTestingModule({
         imports: [
@@ -303,7 +302,7 @@ describe('VideoProcessor (integration: Postgres + MinIO + FFmpeg)', () => {
       await queueEvents.close();
       await queue.obliterate({ force: true });
       await queueModule.close(); // closes the worker and the queue
-      process.env.QUEUE_BACKOFF_DELAY_MS = previousBackoff;
+      restoreBackoff();
       testPrefix.restore();
     });
 
