@@ -389,3 +389,13 @@
   - **Correção:** as duas chaves entraram no `.env.example` com os mesmos valores padrão do schema, `APP_URL=http://localhost:3000` e `SWAGGER_ENABLED=false`, para não mudar comportamento. Um comentário indica que `SWAGGER_ENABLED=true` habilita a documentação em `/api/docs`.
   - **Verificação:** o `.env.example` inteiro, lido pelo `dotenv`, valida no `envValidationSchema`, com as 29 chaves do schema presentes.
   - Commit separado: `chore: document optional APP_URL and SWAGGER_ENABLED in .env.example`.
+- **Follow-up: banco de testes compartilhado com o dev.**
+  - **Situação:** as suítes de integração e e2e usam o mesmo banco `streamtube` do ambiente de dev (`DB_NAME=streamtube` no `.env`; `createTestDataSource` com `synchronize: true` por padrão).
+  - **Consequências:**
+    - O `src/database/migrations.integration-spec.ts` recria o schema `public` (apaga todas as tabelas e enums e reaplica as migrations), o que **apaga os dados de dev** a cada `npm test`.
+    - As suítes que limpam e populam as mesmas tabelas precisam rodar em série, por isso o `--runInBand` é obrigatório.
+    - Um banco de dev com linhas de `videos` e sem uma migration recente faz o `synchronize` falhar ao criar uma coluna `NOT NULL`. É a causa provável da falha intermitente da primeira rodada do SI-03.15, que não se repetiu nas rodadas seguintes da DoD.
+  - **Prova do backfill da `AddVideoTitle`:** é o teste de integração da migration em `migrations.integration-spec.ts`, não o banco de dev. Ele insere linhas reais com SQL antes do `up()` e confere o `title` de cada uma.
+    - O `SELECT original_filename, title FROM videos` no banco de dev só mostrou sobras do `videos-playback.e2e-spec.ts`. Essas linhas foram criadas depois de a migration estar aplicada, com o `title` gerado pela aplicação.
+    - Os dados que existiam no dev antes do SI-03.15 foram apagados pela recriação do schema, então o backfill nunca rodou sobre eles.
+  - **Sugestão futura (task separada):** um banco de testes próprio (ex.: `streamtube_test`, criado no Compose e apontado por variável de ambiente nos testes). Isso deixa os dados de dev intactos e permite provar migrations contra dados reais de dev.
