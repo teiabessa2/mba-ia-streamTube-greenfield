@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { getQueueToken } from '@nestjs/bullmq';
 import { ConfigModule } from '@nestjs/config';
 import { Test, type TestingModule } from '@nestjs/testing';
@@ -23,6 +24,7 @@ import { useTestBucket } from '../test/test-bucket';
 import { useTestQueuePrefix } from '../test/test-queue';
 import { User } from '../users/entities/user.entity';
 import { Video } from './entities/video.entity';
+import { VideoNotFoundException } from './video.exceptions';
 import { VideoProcessingQueue } from './video-processing.queue';
 import { VideosService } from './videos.service';
 import { VideoStatus } from './videos.types';
@@ -223,6 +225,69 @@ describe('VideosService (integration: Postgres + MinIO + Redis)', () => {
       await expect(
         storageService.listParts(key, uploadId!),
       ).rejects.toMatchObject({ name: 'NoSuchUpload' });
+    });
+  });
+
+  describe('findOwned', () => {
+    it.each([
+      VideoStatus.DRAFT,
+      VideoStatus.PROCESSING,
+      VideoStatus.READY,
+      VideoStatus.FAILED,
+    ])(
+      'should return a video of the own channel in status %s',
+      async (status) => {
+        const draft = await videosService.initiateUpload(channel.user_id, {
+          file_name: 'clip.mp4',
+          content_type: 'video/mp4',
+          size_bytes: 1024,
+        });
+        const row = await dataSource
+          .getRepository(Video)
+          .findOneByOrFail({ id: draft.id });
+        openUploads.push({ key: row.storage_key, uploadId: row.upload_id! });
+        await dataSource
+          .getRepository(Video)
+          .update({ id: draft.id }, { status });
+
+        const video = await videosService.findOwned(channel.user_id, draft.id);
+
+        expect(video).toMatchObject({
+          id: draft.id,
+          channel_id: channel.id,
+          status,
+        });
+      },
+    );
+
+    it('should throw VideoNotFoundException for a video of another channel', async () => {
+      const draft = await videosService.initiateUpload(channel.user_id, {
+        file_name: 'clip.mp4',
+        content_type: 'video/mp4',
+        size_bytes: 1024,
+      });
+      const row = await dataSource
+        .getRepository(Video)
+        .findOneByOrFail({ id: draft.id });
+      openUploads.push({ key: row.storage_key, uploadId: row.upload_id! });
+      const otherUser = await dataSource
+        .getRepository(User)
+        .save({ email: 'other@example.com', password: 'hashed' });
+      await dataSource.getRepository(Channel).save({
+        name: 'Other',
+        nickname: 'other',
+        user_id: otherUser.id,
+      });
+
+      await expect(
+        videosService.findOwned(otherUser.id, draft.id),
+      ).rejects.toBeInstanceOf(VideoNotFoundException);
+    });
+
+    it('should throw VideoNotFoundException for a video that does not exist', async () => {
+      await expect(
+        videosService.findOwned(channel.user_id, randomUUID()),
+      ).rejects.toBeInstanceOf(VideoNotFoundException);
     });
   });
 });

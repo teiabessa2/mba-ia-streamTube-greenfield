@@ -12,6 +12,7 @@ import {
 import {
   ApiBearerAuth,
   ApiBody,
+  ApiOkResponse,
   ApiOperation,
   ApiParam,
   ApiResponse,
@@ -28,6 +29,7 @@ import { InitiateUploadDto } from './dto/initiate-upload.dto';
 import { PresignPartsResponseDto } from './dto/presign-parts-response.dto';
 import { PresignPartsDto } from './dto/presign-parts.dto';
 import { UploadedPartsResponseDto } from './dto/uploaded-parts-response.dto';
+import { VideoResponseDto } from './dto/video-response.dto';
 import { VideosService } from './videos.service';
 
 @ApiTags('videos')
@@ -237,5 +239,35 @@ export class VideosController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<void> {
     await this.videosService.abortUpload(user.sub, id);
+  }
+
+  @Get(':id')
+  @ApiOperation({
+    summary: 'Get an owned video',
+    description:
+      'Returns the status (draft, processing, ready or failed) and the details of a video owned by the caller: extracted duration and metadata, failure reason and a presigned thumbnail URL (valid for 3600s).',
+  })
+  @ApiParam({ name: 'id', format: 'uuid', description: 'Video id' })
+  @ApiOkResponse({ description: 'Video detail', type: VideoResponseDto })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid video id (VALIDATION_ERROR)',
+    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Missing or invalid access token',
+    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Video not found or not owned by the caller (VIDEO_NOT_FOUND)',
+    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
+  })
+  async getOwned(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<VideoResponseDto> {
+    return this.videosService.getOwnedDetail(user.sub, id);
   }
 }

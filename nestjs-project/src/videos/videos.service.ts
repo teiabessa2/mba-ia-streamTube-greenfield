@@ -15,6 +15,7 @@ import type { InitiateUploadDto } from './dto/initiate-upload.dto';
 import type { InitiateUploadResponseDto } from './dto/initiate-upload-response.dto';
 import type { PresignPartsResponseDto } from './dto/presign-parts-response.dto';
 import type { UploadedPartsResponseDto } from './dto/uploaded-parts-response.dto';
+import { VideoResponseDto } from './dto/video-response.dto';
 import { Video } from './entities/video.entity';
 import { generatePublicId } from './public-id.util';
 import { VideoProcessingQueue } from './video-processing.queue';
@@ -30,6 +31,7 @@ import {
 } from './video.exceptions';
 import {
   PUBLIC_ID_MAX_ATTEMPTS,
+  VIDEO_DETAIL,
   VIDEO_FORMAT_ALLOWLIST,
   VIDEO_UPLOAD_LIMITS,
   videoStorageKeys,
@@ -130,10 +132,11 @@ export class VideosService {
   }
 
   /**
-   * Loads a draft owned by the caller's channel. Missing or foreign videos are
-   * reported as not found, without revealing that they exist.
+   * Loads a video of the caller's channel, in any status. Missing or foreign
+   * videos are reported as not found, without revealing that they exist
+   * (phase-03-videos/TD-08).
    */
-  async findOwnedDraft(userId: string, id: string): Promise<Video> {
+  async findOwned(userId: string, id: string): Promise<Video> {
     const channel = await this.channelsService.findByUserId(userId);
     const video = channel
       ? await this.videoRepository.findOne({
@@ -141,6 +144,23 @@ export class VideosService {
         })
       : null;
     if (!video) throw new VideoNotFoundException();
+    return video;
+  }
+
+  /** Owner detail: status, extracted metadata and a presigned thumbnail URL. */
+  async getOwnedDetail(userId: string, id: string): Promise<VideoResponseDto> {
+    const video = await this.findOwned(userId, id);
+    const thumbnailUrl = video.thumbnail_key
+      ? await this.storageService.presignGet(video.thumbnail_key, {
+          expiresIn: VIDEO_DETAIL.THUMBNAIL_URL_EXPIRES_IN_S,
+        })
+      : null;
+    return VideoResponseDto.from(video, thumbnailUrl);
+  }
+
+  /** Loads a draft (with an open multipart upload) owned by the caller. */
+  async findOwnedDraft(userId: string, id: string): Promise<Video> {
+    const video = await this.findOwned(userId, id);
     if (video.status !== VideoStatus.DRAFT || !video.upload_id) {
       throw new VideoNotInDraftException();
     }

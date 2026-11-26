@@ -34,3 +34,9 @@ export const PROCESS_VIDEO_JOB = {
   NAME: 'process-video',
   ATTEMPTS: 3,
 } as const;
+
+/** Owner detail (`GET /videos/:id`). */
+export const VIDEO_DETAIL = {
+  /** Lifetime of the presigned thumbnail GET URL, in seconds (phase-03-videos/TD-02). */
+  THUMBNAIL_URL_EXPIRES_IN_S: 3600,
+} as const;

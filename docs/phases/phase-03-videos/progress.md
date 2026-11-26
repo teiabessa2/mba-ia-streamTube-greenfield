@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 11/14 completed
+**SIs:** 12/14 completed
 
 ### SI-03.1 — Infra: Redis, MinIO, FFmpeg e bibliotecas da fase
 - **Status:** completed
@@ -222,9 +222,29 @@
   - **Captura do estado entre tentativas.** É feita com um `spyOn` no `presignInternalGet` do `StorageService` do worker, a primeira chamada de cada tentativa, que delega à implementação real.
 
 ### SI-03.12 — Endpoint GET /videos/:id (status e detalhe do próprio vídeo)
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 11 novos passando:
+  - `videos.service.integration-spec.ts`: 5 novos de `findOwned`.
+    - Vídeo do próprio canal em `draft`, `processing`, `ready` e `failed` (`it.each`).
+    - Vídeo de outro canal → `VideoNotFoundException`.
+    - Vídeo inexistente → `VideoNotFoundException`.
+  - `test/videos-get-owned.e2e-spec.ts`: 6 testes, os 6 cenários de `specs/videos-get-owned.plan.md`.
+    - `rascunho-sem-metadados`.
+    - `video-ready-com-metadados-e-thumbnail`, com GET real na `thumbnail_url` via `requestPresigned` → JPEG `FF D8`.
+    - `video-failed-com-motivo`.
+    - `outro-usuario-recebe-404`, com envelope idêntico ao de id inexistente.
+    - `sem-token-recebe-401`.
+    - `id-nao-uuid-recebe-400`.
+
+  Regressão: 280 unit/integration (39 suítes) e 82 e2e (8 suítes) passando. `tsc --noEmit` limpo. `npm run lint` com 0 erros e os 23 warnings pré-existentes.
+- **Observations:**
+  - **Specs "STALE" no preflight eram falso positivo.** O `phase-03-videos.md` só mudou, desde `30a33bd` (`docs: phase 03 test specs`), na correção do `ioredis` do SI-03.1, que não toca este SI. O spec foi usado como está.
+  - **`findOwned` extraído e reaproveitado.** O `findOwnedDraft` passou a chamar o novo `findOwned` e só acrescenta a checagem de `draft`/`upload_id`. O comportamento não mudou, e as suítes dos SIs 03.6–03.8 continuam verdes.
+  - **Mapeamento no DTO, presign no service.** `getOwnedDetail` chama `findOwned`, assina a `thumbnail_url` com o cliente público (`presignGet`, `VIDEO_DETAIL.THUMBNAIL_URL_EXPIRES_IN_S = 3600`, em `videos.constants.ts`) só quando há `thumbnail_key`, e delega o shape a `VideoResponseDto.from(video, thumbnailUrl)`. O DTO não depende de serviços.
+  - **OpenAPI.** `VideoMetadataDto` foi criado como schema aninhado de `metadata`, com `audioCodec` opcional. Os campos anuláveis são `nullable` e obrigatórios, porque o contrato sempre os devolve, mesmo com `null`. A rota tem `@ApiOkResponse(VideoResponseDto)` e 400/401/404 com `ApiErrorEnvelope`. O `openapi.json` commitado não foi regenerado: o plano faz isso no SI-03.13.
+  - **Arquivos além dos listados no plano:**
+    - `MediaFixtures.jpeg()` em `src/test/media-fixtures.ts`, que gera o JPEG do cenário `ready` sem binário commitado.
+    - `VIDEO_DETAIL` em `videos.constants.ts`.
 
 ### SI-03.13 — Endpoints públicos de streaming e download (302 pré-assinado)
 - **Status:** pending

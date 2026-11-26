@@ -53,6 +53,24 @@ export class MediaFixtures {
     return output;
   }
 
+  /** A small JPEG (one `testsrc` frame), e.g. a thumbnail stored directly. */
+  async jpeg(name: string): Promise<string> {
+    const output = join(this.dir, name);
+    await execFileAsync('ffmpeg', [
+      '-v',
+      'error',
+      '-f',
+      'lavfi',
+      '-i',
+      'testsrc=size=160x120',
+      '-frames:v',
+      '1',
+      '-y',
+      output,
+    ]);
+    return output;
+  }
+
   /** A plain text file with a video extension (not decodable as media). */
   async fakeVideo(name: string): Promise<string> {
     const output = join(this.dir, name);
