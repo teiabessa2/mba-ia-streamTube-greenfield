@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 12/14 completed
+**SIs:** 13/14 completed
 
 ### SI-03.1 — Infra: Redis, MinIO, FFmpeg e bibliotecas da fase
 - **Status:** completed
@@ -247,9 +247,33 @@
     - `VIDEO_DETAIL` em `videos.constants.ts`.
 
 ### SI-03.13 — Endpoints públicos de streaming e download (302 pré-assinado)
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 24 novos passando:
+  - `videos.service.spec.ts`: 7 unit novos.
+    - `findReadyByPublicId`: busca por `public_id` + `status = ready`; sem linha → `VideoNotFoundException`; `publicId` malformado → `VideoNotFoundException` sem consultar o banco.
+    - `getPlaybackUrl`: `stream` assina com `expiresIn: 3600` + `contentType` e sem `contentDisposition`; `download` inclui `attachment; filename="my clip.mp4"`; nome saneado (aspas, `\` e caracteres de controle removidos); vídeo não `ready` → nada é assinado.
+  - `videos.service.integration-spec.ts`: 5 novos de `findReadyByPublicId` (Postgres real).
+    - Vídeo `ready` encontrado pelo `public_id`.
+    - `draft`, `processing` e `failed` → `VideoNotFoundException` (`it.each`).
+    - `public_id` inexistente → `VideoNotFoundException`.
+  - `public-id.util.spec.ts`: 7 novos de `isPublicIdFormat` (1 aceita 1.000 ids gerados, 6 rejeições em `it.each`).
+  - `test/videos-playback.e2e-spec.ts`: 5 testes, os 5 cenários de `specs/videos-playback.plan.md`.
+    - `stream-redireciona-para-url-publica`: `302` sem corpo, `Location` no host de `S3_PUBLIC_ENDPOINT` com `X-Amz-Signature`.
+    - `stream-atende-range-com-206`: `Range: bytes=0-99` via `requestPresigned` → `206`, 100 bytes iguais aos do buffer, `Content-Range: bytes 0-99/4096`, `Content-Type: video/mp4`.
+    - `download-forca-attachment-com-nome-original`: `200` com os 4096 bytes e `Content-Disposition: attachment; filename="my clip.mp4"`.
+    - `status-nao-ready-recebe-404-inclusive-para-o-dono`: `draft`/`processing`/`failed` × `stream`/`download` × sem token/token do dono → `404 VIDEO_NOT_FOUND`.
+    - `public-id-inexistente-tem-resposta-identica`: `AAAAAAAAAAA` → `statusCode`/`error`/`message` idênticos aos do vídeo em `processing`; `x` → `404` (nunca `400`).
+  - Teste de mutação: tirar o filtro `status = ready` e o `contentDisposition` do service faz 3 dos 5 e2e falharem; o código foi restaurado em seguida.
+
+  Regressão: 299 unit/integration (39 suítes) e 87 e2e (9 suítes) passando. `tsc --noEmit` limpo. `npm run lint` com 0 erros e os 23 warnings pré-existentes.
+- **Observations:**
+  - **`publicId` malformado sem ir ao banco.** `isPublicIdFormat` (em `public-id.util.ts`, ao lado de `generatePublicId`) valida o formato `^[A-Za-z0-9_-]{11}$` do TD-07. Fora dele, `findReadyByPublicId` lança o mesmo `VideoNotFoundException` sem consultar `videos`, como pede a regra de validação (formato inválido → 404, nunca 400).
+  - **Redirect com `@Redirect()` dinâmico.** As rotas retornam `HttpRedirectResponse` (`{ url, statusCode: 302 }`), conforme a doc do NestJS consultada no Context7. Exceções do service continuam passando pelo `DomainExceptionFilter`, por isso o 404 tem o envelope padrão.
+  - **`@ApiBearerAuth` movido da classe para as rotas do dono (além do plano).** No `@nestjs/swagger@11.4.2`, a segurança declarada na classe vale para toda rota do controller. Com ela lá, o `openapi.json` mostraria `stream`/`download` exigindo bearer. Agora as 6 rotas do dono têm `@ApiBearerAuth('access-token')` cada uma, e as 2 públicas saem sem `security`. O comportamento em runtime não muda: quem decide é o `JwtAuthGuard` global + `@Public()`.
+  - **OpenAPI.** O 302 documenta o header `Location` (`format: uri`) via `headers` do `@ApiResponse`, e o 404 usa `ApiErrorEnvelope`. Esses decoradores ficam agrupados em `ApiPlaybackResponses` (`applyDecorators`). O `openapi.json` foi regenerado com `npm run openapi:export` e agora tem as 8 operações de `### API Contracts`. O diff só acrescenta linhas: as rotas de `auth` não mudaram.
+  - **Saneamento do nome no download.** Além de aspas e caracteres de controle (pedidos pelo plano), a `\` também é removida, porque é o caractere de escape do quoted-string. Caracteres não ASCII são mantidos como estão: o plano não pede `filename*` (RFC 5987), e isso fica como follow-up caso apareça problema com nomes acentuados.
+  - **Setup do e2e.** O rascunho é criado por `POST /videos`; o multipart aberto é abortado, os bytes vão por `putObject` e a linha passa para `ready` com `upload_id = null` direto no banco, sem worker (que fica para o SI-03.14). O supertest usa `.redirects(0)`.
+  - **Arquivos além dos listados no plano:** `VIDEO_PLAYBACK` em `videos.constants.ts`, `PlaybackMode` em `videos.types.ts` e `isPublicIdFormat` em `public-id.util.ts`.
 
 ### SI-03.14 — Fluxo completo upload → processamento → streaming (E2E com worker real)
 - **Status:** pending

@@ -40,3 +40,9 @@ export const VIDEO_DETAIL = {
   /** Lifetime of the presigned thumbnail GET URL, in seconds (phase-03-videos/TD-02). */
   THUMBNAIL_URL_EXPIRES_IN_S: 3600,
 } as const;
+
+/** Public playback (`GET /videos/:publicId/stream|download`). */
+export const VIDEO_PLAYBACK = {
+  /** Lifetime of the presigned stream/download GET URL, in seconds (phase-03-videos/TD-08). */
+  URL_EXPIRES_IN_S: 3600,
+} as const;

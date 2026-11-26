@@ -21,3 +21,6 @@ export interface VideoMetadata {
 export interface ProcessVideoJobData {
   videoId: string;
 }
+
+/** How a ready video is delivered by the public playback routes (TD-08). */
+export type PlaybackMode = 'stream' | 'download';

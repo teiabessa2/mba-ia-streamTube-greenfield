@@ -556,3 +556,119 @@ describe('VideosService.abortUpload', () => {
     expect(repo.delete).not.toHaveBeenCalled();
   });
 });
+
+describe('VideosService.findReadyByPublicId / getPlaybackUrl', () => {
+  const PUBLIC_ID = 'AbCdEfGh_-1';
+  const PRESIGNED =
+    'http://localhost:9000/streamtube/videos/video-1/original?X-Amz-Signature=sig';
+  let service: VideosService;
+  let repo: { findOne: jest.Mock };
+  let storage: { presignGet: jest.Mock };
+
+  const readyVideo = (overrides: Partial<Video> = {}): Video =>
+    ({
+      id: 'video-1',
+      public_id: PUBLIC_ID,
+      status: VideoStatus.READY,
+      storage_key: 'videos/video-1/original',
+      content_type: 'video/mp4',
+      original_filename: 'my clip.mp4',
+      ...overrides,
+    }) as Video;
+
+  beforeEach(async () => {
+    repo = { findOne: jest.fn().mockResolvedValue(readyVideo()) };
+    storage = { presignGet: jest.fn().mockResolvedValue(PRESIGNED) };
+
+    const moduleRef = await Test.createTestingModule({
+      providers: [
+        VideosService,
+        { provide: getRepositoryToken(Video), useValue: repo },
+        { provide: StorageService, useValue: storage },
+        { provide: ChannelsService, useValue: { findByUserId: jest.fn() } },
+        { provide: VideoProcessingQueue, useValue: { enqueue: jest.fn() } },
+      ],
+    }).compile();
+    service = moduleRef.get(VideosService);
+  });
+
+  describe('findReadyByPublicId', () => {
+    it('should look up only ready videos by public_id', async () => {
+      await expect(service.findReadyByPublicId(PUBLIC_ID)).resolves.toEqual(
+        readyVideo(),
+      );
+      expect(repo.findOne).toHaveBeenCalledWith({
+        where: { public_id: PUBLIC_ID, status: VideoStatus.READY },
+      });
+    });
+
+    it('should throw VideoNotFoundException when no ready video matches', async () => {
+      repo.findOne.mockResolvedValueOnce(null);
+
+      await expect(
+        service.findReadyByPublicId(PUBLIC_ID),
+      ).rejects.toBeInstanceOf(VideoNotFoundException);
+    });
+
+    it('should throw VideoNotFoundException for a malformed public id without querying', async () => {
+      await expect(service.findReadyByPublicId('x')).rejects.toBeInstanceOf(
+        VideoNotFoundException,
+      );
+      expect(repo.findOne).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getPlaybackUrl', () => {
+    it('should sign a stream URL with the video content type and no Content-Disposition', async () => {
+      const url = await service.getPlaybackUrl(PUBLIC_ID, 'stream');
+
+      expect(url).toBe(PRESIGNED);
+      expect(storage.presignGet).toHaveBeenCalledWith(
+        'videos/video-1/original',
+        { expiresIn: 3600, contentType: 'video/mp4' },
+      );
+      const [, options] = storage.presignGet.mock.calls[0] as [
+        string,
+        Record<string, unknown>,
+      ];
+      expect(options).not.toHaveProperty('contentDisposition');
+    });
+
+    it('should sign a download URL with attachment and the original file name', async () => {
+      await service.getPlaybackUrl(PUBLIC_ID, 'download');
+
+      expect(storage.presignGet).toHaveBeenCalledWith(
+        'videos/video-1/original',
+        {
+          expiresIn: 3600,
+          contentType: 'video/mp4',
+          contentDisposition: 'attachment; filename="my clip.mp4"',
+        },
+      );
+    });
+
+    it('should strip quotes, backslashes and control characters from the download file name', async () => {
+      repo.findOne.mockResolvedValueOnce(
+        readyVideo({ original_filename: 'a"b\\c\r\nd\u0000e\u007f.mp4' }),
+      );
+
+      await service.getPlaybackUrl(PUBLIC_ID, 'download');
+
+      expect(storage.presignGet).toHaveBeenCalledWith(
+        'videos/video-1/original',
+        expect.objectContaining({
+          contentDisposition: 'attachment; filename="abcde.mp4"',
+        }),
+      );
+    });
+
+    it('should not sign anything when the video is not ready', async () => {
+      repo.findOne.mockResolvedValueOnce(null);
+
+      await expect(
+        service.getPlaybackUrl(PUBLIC_ID, 'stream'),
+      ).rejects.toBeInstanceOf(VideoNotFoundException);
+      expect(storage.presignGet).not.toHaveBeenCalled();
+    });
+  });
+});

@@ -24,6 +24,7 @@ import { useTestBucket } from '../test/test-bucket';
 import { useTestQueuePrefix } from '../test/test-queue';
 import { User } from '../users/entities/user.entity';
 import { Video } from './entities/video.entity';
+import { generatePublicId } from './public-id.util';
 import { VideoNotFoundException } from './video.exceptions';
 import { VideoProcessingQueue } from './video-processing.queue';
 import { VideosService } from './videos.service';
@@ -287,6 +288,56 @@ describe('VideosService (integration: Postgres + MinIO + Redis)', () => {
     it('should throw VideoNotFoundException for a video that does not exist', async () => {
       await expect(
         videosService.findOwned(channel.user_id, randomUUID()),
+      ).rejects.toBeInstanceOf(VideoNotFoundException);
+    });
+  });
+
+  describe('findReadyByPublicId', () => {
+    /** A draft row moved straight to `status` (no multipart is opened). */
+    const insertVideo = async (status: VideoStatus): Promise<Video> => {
+      const id = randomUUID();
+      return dataSource.getRepository(Video).save({
+        id,
+        public_id: generatePublicId(),
+        channel_id: channel.id,
+        status,
+        original_filename: 'clip.mp4',
+        content_type: 'video/mp4',
+        size_bytes: 1024,
+        storage_key: `videos/${id}/original`,
+        part_size: 67108864,
+        part_count: 1,
+      });
+    };
+
+    it('should return a ready video by its public_id', async () => {
+      const ready = await insertVideo(VideoStatus.READY);
+
+      const video = await videosService.findReadyByPublicId(ready.public_id);
+
+      expect(video).toMatchObject({
+        id: ready.id,
+        public_id: ready.public_id,
+        status: VideoStatus.READY,
+      });
+    });
+
+    it.each([VideoStatus.DRAFT, VideoStatus.PROCESSING, VideoStatus.FAILED])(
+      'should throw VideoNotFoundException for a video in status %s',
+      async (status) => {
+        const video = await insertVideo(status);
+
+        await expect(
+          videosService.findReadyByPublicId(video.public_id),
+        ).rejects.toBeInstanceOf(VideoNotFoundException);
+      },
+    );
+
+    it('should throw VideoNotFoundException for a public_id that does not exist', async () => {
+      await insertVideo(VideoStatus.READY);
+
+      await expect(
+        videosService.findReadyByPublicId(generatePublicId()),
       ).rejects.toBeInstanceOf(VideoNotFoundException);
     });
   });

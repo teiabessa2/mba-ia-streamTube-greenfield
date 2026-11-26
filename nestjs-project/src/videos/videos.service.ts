@@ -17,9 +17,9 @@ import type { PresignPartsResponseDto } from './dto/presign-parts-response.dto';
 import type { UploadedPartsResponseDto } from './dto/uploaded-parts-response.dto';
 import { VideoResponseDto } from './dto/video-response.dto';
 import { Video } from './entities/video.entity';
-import { generatePublicId } from './public-id.util';
+import { generatePublicId, isPublicIdFormat } from './public-id.util';
 import { VideoProcessingQueue } from './video-processing.queue';
-import { VideoStatus } from './videos.types';
+import { VideoStatus, type PlaybackMode } from './videos.types';
 import {
   InvalidPartNumberException,
   InvalidUploadPartsException,
@@ -33,6 +33,7 @@ import {
   PUBLIC_ID_MAX_ATTEMPTS,
   VIDEO_DETAIL,
   VIDEO_FORMAT_ALLOWLIST,
+  VIDEO_PLAYBACK,
   VIDEO_UPLOAD_LIMITS,
   videoStorageKeys,
 } from './videos.constants';
@@ -64,6 +65,28 @@ const isAllowedFormat = (fileName: string, contentType: string): boolean => {
     ) &&
     (VIDEO_FORMAT_ALLOWLIST.EXTENSIONS as readonly string[]).includes(extension)
   );
+};
+
+const DEL_CHAR_CODE = 0x7f;
+const FIRST_PRINTABLE_CHAR_CODE = 0x20;
+
+/** Whether `char` would break a header quoted-string: `"`, `\` or a control character. */
+const isUnsafeInQuotedString = (char: string): boolean => {
+  const code = char.charCodeAt(0);
+  return (
+    code < FIRST_PRINTABLE_CHAR_CODE ||
+    code === DEL_CHAR_CODE ||
+    char === '"' ||
+    char === '\\'
+  );
+};
+
+/** `attachment; filename="..."` with the unsafe characters removed. */
+const attachmentDisposition = (fileName: string): string => {
+  const safeName = Array.from(fileName)
+    .filter((char) => !isUnsafeInQuotedString(char))
+    .join('');
+  return `attachment; filename="${safeName}"`;
 };
 
 @Injectable()
@@ -156,6 +179,37 @@ export class VideosService {
         })
       : null;
     return VideoResponseDto.from(video, thumbnailUrl);
+  }
+
+  /**
+   * Loads a video by its public id, only when `ready`. A missing id, a
+   * malformed one and a video in any other status give the same not found,
+   * for any caller (phase-03-videos/TD-08 revisão 2026-11-23, TD-07).
+   */
+  async findReadyByPublicId(publicId: string): Promise<Video> {
+    const video = isPublicIdFormat(publicId)
+      ? await this.videoRepository.findOne({
+          where: { public_id: publicId, status: VideoStatus.READY },
+        })
+      : null;
+    if (!video) throw new VideoNotFoundException();
+    return video;
+  }
+
+  /**
+   * Presigned GET (public client) for the original object of a ready video.
+   * `download` adds `Content-Disposition: attachment` with the original file
+   * name; the storage serves `Range` natively for `stream` (TD-08, TD-02).
+   */
+  async getPlaybackUrl(publicId: string, mode: PlaybackMode): Promise<string> {
+    const video = await this.findReadyByPublicId(publicId);
+    return this.storageService.presignGet(video.storage_key, {
+      expiresIn: VIDEO_PLAYBACK.URL_EXPIRES_IN_S,
+      contentType: video.content_type,
+      ...(mode === 'download' && {
+        contentDisposition: attachmentDisposition(video.original_filename),
+      }),
+    });
   }
 
   /** Loads a draft (with an open multipart upload) owned by the caller. */
