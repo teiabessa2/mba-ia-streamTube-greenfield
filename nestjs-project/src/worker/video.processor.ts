@@ -1,7 +1,7 @@
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { type Job, UnrecoverableError } from 'bullmq';
@@ -15,6 +15,7 @@ import { StorageService } from '../storage/storage.service';
 import { Video } from '../videos/entities/video.entity';
 import { videoStorageKeys } from '../videos/videos.constants';
 import { type ProcessVideoJobData, VideoStatus } from '../videos/videos.types';
+import { toFailureReason } from './failure-reason.util';
 import { THUMBNAIL } from './worker.constants';
 
 /**
@@ -67,6 +68,58 @@ export class VideoProcessor extends WorkerHost {
       },
     );
     this.logger.log(`Video ${videoId} is ready`);
+  }
+
+  /**
+   * Runs after every failed attempt (BullMQ already incremented `attemptsMade`).
+   * Only a final failure (unrecoverable error or attempts exhausted) marks the
+   * video `failed`; intermediate ones stay `processing` for the retry (TD-10).
+   * Event handler: errors are logged, never rethrown (would crash the worker).
+   */
+  @OnWorkerEvent('failed')
+  async onFailed(
+    job: Job<ProcessVideoJobData> | undefined,
+    err: Error,
+  ): Promise<void> {
+    if (!job) return; // stalled job already removed by removeOnFail
+    const { videoId } = job.data;
+    const attempts = job.opts.attempts ?? 1;
+    const final =
+      err instanceof UnrecoverableError || job.attemptsMade >= attempts;
+    const reason = toFailureReason(err.message);
+    const context = {
+      videoId,
+      attemptsMade: job.attemptsMade,
+      attempts,
+      final,
+      reason,
+    };
+
+    if (!final) {
+      this.logger.warn({
+        ...context,
+        message: 'Video processing attempt failed',
+      });
+      return;
+    }
+    this.logger.error({
+      ...context,
+      message: 'Video processing failed',
+    });
+
+    try {
+      // Conditional: a late failure event never overwrites a video already `ready`.
+      await this.videos.update(
+        { id: videoId, status: VideoStatus.PROCESSING },
+        { status: VideoStatus.FAILED, failure_reason: reason },
+      );
+    } catch (updateError) {
+      this.logger.error({
+        ...context,
+        message: 'Could not mark the video as failed',
+        updateError: (updateError as Error).message,
+      });
+    }
   }
 
   /** Unreadable media never succeeds on retry, so it skips the attempts (TD-11). */

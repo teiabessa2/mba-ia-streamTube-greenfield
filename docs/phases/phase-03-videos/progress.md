@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 10/14 completed
+**SIs:** 11/14 completed
 
 ### SI-03.1 — Infra: Redis, MinIO, FFmpeg e bibliotecas da fase
 - **Status:** completed
@@ -116,7 +116,7 @@
     - MP4 3s 320x240 com áudio.
     - Vídeo sem áudio.
     - Texto renomeado `.mp4` → `InvalidMediaError`.
-    - Objeto inexistente (403) → erro transitório.
+    - Objeto inexistente (`404 Not Found`, corrigido no SI-03.11; antes dizia 403) → erro transitório.
     - Timeout do `ffprobe`.
     - `extractFrame` gera JPEG com assinatura `FF D8`.
   - `media.module.spec.ts`: 1 teste de compilação.
@@ -185,9 +185,41 @@
     - `videoStorageKeys.thumbnail` em `videos.constants.ts`, ao lado de `original`.
 
 ### SI-03.11 — Handler de falha final do processamento (retry + `failed`)
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 12 novos passando, 27 nas suítes de `src/worker`:
+  - `video.processor.spec.ts`: 6 unit novos de `onFailed`.
+    - `UnrecoverableError` na 1ª tentativa → `failed`.
+    - Erro comum com `attemptsMade` 1 e 2 de 3 → sem alteração.
+    - Erro comum com `attemptsMade = attempts` → `failed`.
+    - URL pré-assinada removida do motivo gravado.
+    - Evento sem `job` → ignorado.
+    - Falha ao gravar `failed` → logada, sem lançar.
+  - `failure-reason.util.spec.ts`: 3 unit.
+  - `video.processor.integration-spec.ts`: 3 novos com Redis, Postgres, MinIO e FFmpeg reais.
+    - Evento de falha tardio para um vídeo `ready` não altera a linha.
+    - Fila real com `Worker` do processor no processo do teste, prefixo `test-video-processor-*`, `QUEUE_BACKOFF_DELAY_MS=100` e `job.waitUntilFinished(queueEvents)`:
+      - objeto inválido → `failed` com `attemptsMade = 1`;
+      - objeto ausente → `attemptsMade = 3`, com `processing`/`failure_reason = null` no início de cada tentativa, e depois `failed`.
+
+  Regressão: 274 unit/integration (39 suítes) e 76 e2e (7 suítes) passando. `tsc --noEmit` limpo. `npm run lint` com 0 erros e os 23 warnings pré-existentes.
+- **Observations:**
+  - **`attemptsMade` no evento `failed`, conferido no código do `bullmq@6.7.8`.**
+    - O `Worker.handleFailed` emite `failed` em toda tentativa que falha, inclusive nas que serão retentadas.
+    - O evento sai sempre depois de `job.moveToFailed()`, que já incrementou `attemptsMade`.
+    - Por isso `attemptsMade >= opts.attempts` identifica a falha final, como diz o plano. O `+ 1` que aparece na doc é de dentro do `shouldRetryJob`, antes do incremento.
+    - `opts.attempts` ausente é tratado como 1.
+    - O `job` pode vir `undefined` (stalled removido por `removeOnFail`), e então o evento é ignorado.
+  - **`failure_reason` sem URL pré-assinada (correção além do plano).**
+    - O plano grava `failure_reason = err.message`. Mas a mensagem do `MediaService` inclui o stderr do `ffprobe`, que repete a URL de entrada: host interno, bucket e `X-Amz-Signature` válida por 15 min.
+    - Como o `failure_reason` é devolvido ao dono no `GET /videos/:id` (SI-03.12), `toFailureReason()` (`src/worker/failure-reason.util.ts`) troca toda URL por `<source>` antes de gravar e de logar. Exemplo: `ffprobe failed: <source>: Server returned 404 Not Found`.
+    - Os logs do próprio `ffprobe`/`MediaService` fora do handler não foram alterados (fora do escopo).
+  - **Log estruturado.** O `Logger` recebe um objeto com `videoId`, `attemptsMade`, `attempts`, `final` e `reason`.
+    - Tentativa intermediária → `warn`.
+    - Falha final → `error`.
+    - Falha ao gravar `failed` → `error` com `updateError`, sem relançar. É handler de evento de background, e relançar derrubaria o worker.
+  - **Atualização condicional** (ação 2): `update({ id, status: processing }, { status: failed, failure_reason })`. O teste "evento tardio" confirma que um vídeo `ready` não muda.
+  - **Espera pelo `onFailed` no teste.** O `waitUntilFinished` resolve pelo `QueueEvents`, que pode chegar antes de o `onFailed` do worker gravar no banco. Os testes de fila esperam o status no banco por até 5s (polling de 50ms).
+  - **Captura do estado entre tentativas.** É feita com um `spyOn` no `presignInternalGet` do `StorageService` do worker, a primeira chamada de cada tentativa, que delega à implementação real.
 
 ### SI-03.12 — Endpoint GET /videos/:id (status e detalhe do próprio vídeo)
 - **Status:** pending

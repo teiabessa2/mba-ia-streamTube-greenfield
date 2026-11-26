@@ -172,3 +172,89 @@ describe('VideoProcessor.process', () => {
     await expect(access(dirname(framePaths[0]))).rejects.toThrow();
   });
 });
+
+describe('VideoProcessor.onFailed', () => {
+  let processor: VideoProcessor;
+  let repo: { findOneBy: jest.Mock; update: jest.Mock };
+
+  const failedJob = (attemptsMade: number, attempts = 3) =>
+    ({
+      id: VIDEO_ID,
+      data: { videoId: VIDEO_ID },
+      attemptsMade,
+      opts: { attempts },
+    }) as Job<ProcessVideoJobData>;
+
+  const expectMarkedFailed = (reason: string) => {
+    expect(repo.update).toHaveBeenCalledTimes(1);
+    expect(repo.update).toHaveBeenCalledWith(
+      { id: VIDEO_ID, status: VideoStatus.PROCESSING },
+      { status: VideoStatus.FAILED, failure_reason: reason },
+    );
+  };
+
+  beforeEach(async () => {
+    repo = {
+      findOneBy: jest.fn(),
+      update: jest.fn().mockResolvedValue({ affected: 1 }),
+    };
+    const moduleRef = await Test.createTestingModule({
+      providers: [
+        VideoProcessor,
+        { provide: getRepositoryToken(Video), useValue: repo },
+        { provide: StorageService, useValue: {} },
+        { provide: MediaService, useValue: {} },
+      ],
+    }).compile();
+    processor = moduleRef.get(VideoProcessor);
+  });
+
+  it('should mark the video failed on an UnrecoverableError at the first attempt', async () => {
+    await processor.onFailed(
+      failedJob(1),
+      new UnrecoverableError('No video stream found in the file'),
+    );
+
+    expectMarkedFailed('No video stream found in the file');
+  });
+
+  it('should leave the video untouched on a plain error with attempts left', async () => {
+    await processor.onFailed(failedJob(1), new Error('ffprobe failed: 403'));
+    await processor.onFailed(failedJob(2), new Error('ffprobe failed: 403'));
+
+    expect(repo.update).not.toHaveBeenCalled();
+  });
+
+  it('should mark the video failed on a plain error once attemptsMade reaches attempts', async () => {
+    await processor.onFailed(failedJob(3), new Error('ffprobe failed: 403'));
+
+    expectMarkedFailed('ffprobe failed: 403');
+  });
+
+  it('should strip the presigned URL echoed by ffprobe from the stored reason', async () => {
+    await processor.onFailed(
+      failedJob(3),
+      new Error(
+        'ffprobe failed: http://minio:9000/streamtube/videos/x/original?X-Amz-Signature=abc&X-Amz-Expires=900: Server returned 404 Not Found',
+      ),
+    );
+
+    expectMarkedFailed(
+      'ffprobe failed: <source>: Server returned 404 Not Found',
+    );
+  });
+
+  it('should ignore a failed event without a job', async () => {
+    await processor.onFailed(undefined, new Error('stalled'));
+
+    expect(repo.update).not.toHaveBeenCalled();
+  });
+
+  it('should log and not throw when the failed status cannot be saved', async () => {
+    repo.update.mockRejectedValue(new Error('connection lost'));
+
+    await expect(
+      processor.onFailed(failedJob(3), new Error('ffprobe failed')),
+    ).resolves.toBeUndefined();
+  });
+});
