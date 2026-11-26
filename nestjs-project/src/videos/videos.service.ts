@@ -19,6 +19,7 @@ import type { UploadedPartsResponseDto } from './dto/uploaded-parts-response.dto
 import { VideoResponseDto } from './dto/video-response.dto';
 import { Video } from './entities/video.entity';
 import { generatePublicId, isPublicIdFormat } from './public-id.util';
+import { deriveVideoTitle } from './video-title.util';
 import { VideoProcessingQueue } from './video-processing.queue';
 import { VideoStatus, type PlaybackMode } from './videos.types';
 import {
@@ -117,6 +118,7 @@ export class VideosService {
       const video = await this.saveDraftWithUniquePublicId({
         id,
         channel_id: channel.id,
+        title: dto.title ?? deriveVideoTitle(dto.file_name),
         original_filename: dto.file_name,
         content_type: dto.content_type,
         size_bytes: dto.size_bytes,

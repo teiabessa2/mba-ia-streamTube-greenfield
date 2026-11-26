@@ -120,6 +120,7 @@ describe('videos-get-owned', () => {
       metadata: null,
       thumbnail_url: null,
       failure_reason: null,
+      title: 'clip',
       original_filename: 'clip.mp4',
       content_type: 'video/mp4',
       size_bytes: 45643,

@@ -18,6 +18,8 @@ const PART_SIZE = 64 * 1024 * 1024;
 const PG_UNIQUE_VIOLATION = '23505';
 const PG_FOREIGN_KEY_VIOLATION = '23503';
 const PG_INVALID_TEXT_REPRESENTATION = '22P02';
+const PG_NOT_NULL_VIOLATION = '23502';
+const PG_STRING_DATA_RIGHT_TRUNCATION = '22001';
 
 describe('Video entity (integration)', () => {
   let dataSource: DataSource;
@@ -51,6 +53,7 @@ describe('Video entity (integration)', () => {
     videoRepository.create({
       public_id: generatePublicId(),
       channel_id: channel.id,
+      title: 'clip',
       original_filename: 'clip.mp4',
       content_type: 'video/mp4',
       size_bytes: 1024,
@@ -92,6 +95,28 @@ describe('Video entity (integration)', () => {
 
     expect(err).toBeInstanceOf(QueryFailedError);
     expect(pgCode(err)).toBe(PG_FOREIGN_KEY_VIOLATION);
+  });
+
+  it('should reject a video without title with a NOT NULL violation', async () => {
+    const err: unknown = await videoRepository
+      .save(buildVideo({ title: undefined }))
+      .catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(QueryFailedError);
+    expect(pgCode(err)).toBe(PG_NOT_NULL_VIOLATION);
+  });
+
+  it('should persist a 100-character title and reject 101 characters', async () => {
+    const saved = await videoRepository.save(
+      buildVideo({ title: 'a'.repeat(100) }),
+    );
+    const found = await videoRepository.findOneByOrFail({ id: saved.id });
+    expect(found.title).toBe('a'.repeat(100));
+
+    const err: unknown = await videoRepository
+      .save(buildVideo({ title: 'a'.repeat(101) }))
+      .catch((e: unknown) => e);
+    expect(pgCode(err)).toBe(PG_STRING_DATA_RIGHT_TRUNCATION);
   });
 
   it('should reject a status outside draft/processing/ready/failed', async () => {

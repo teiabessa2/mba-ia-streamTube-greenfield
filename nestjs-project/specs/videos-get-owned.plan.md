@@ -2,7 +2,7 @@
 subproject: backend
 runner: jest+supertest
 scope: phase-03-videos
-si: SI-03.12
+si: SI-03.12, SI-03.15
 target_file: test/videos-get-owned.e2e-spec.ts
 ---
 
@@ -20,14 +20,14 @@ target_file: test/videos-get-owned.e2e-spec.ts
 
 #### 1.1. rascunho-sem-metadados
 
-**Covers AC:** #1
+**Covers AC:** #1 (SI-03.12); `title` na resposta (SI-03.15)
 **Source:** auto
-**Last sync:** 2026-11-23T22:45:04Z
+**Last sync:** 2026-11-26T02:26:03Z
 
 **Steps:**
   1. `GET /videos/:id` do dono para o rascunho
     - expect: status `200` com `status: "draft"`, `duration_seconds: null`, `metadata: null`, `thumbnail_url: null`, `failure_reason: null`
-    - expect: corpo contém `id`, `public_id`, `original_filename`, `content_type`, `size_bytes`, `created_at` e `updated_at` (ISO-8601)
+    - expect: corpo contém `id`, `public_id`, `title` (`"clip"`, derivado de `clip.mp4`), `original_filename`, `content_type`, `size_bytes`, `created_at` e `updated_at` (ISO-8601)
 
 #### 1.2. video-ready-com-metadados-e-thumbnail
 

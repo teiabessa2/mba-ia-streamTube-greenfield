@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
-**Status:** in progress
-**SIs:** 14/15 completed
+**Status:** completed
+**SIs:** 15/15 completed
 
 ### SI-03.1 — Infra: Redis, MinIO, FFmpeg e bibliotecas da fase
 - **Status:** completed
@@ -308,7 +308,23 @@
   - **Arquivos além dos listados no plano:** `padToBytes` em `src/test/media-fixtures.ts`.
 
 ### SI-03.15 — Título do vídeo
-- **Status:** pending
+- **Status:** completed
+- **Tests:** 18 novos e 4 ajustados, todos passando. Os ajustes são em `migrations.integration-spec.ts` (contagem de 4 migrations e o revert, que agora desfaz a `AddVideoTitle` antes da `CreateVideos`), em `videos.service.integration-spec.ts` (assert do `title`) e em `videos-get-owned.e2e-spec.ts`:
+  - Unit:
+    - `video-title.util.spec.ts`: 5 testes. Cobrem a remoção da última extensão, o trim, o fallback para `.mp4` e ` .mp4`, o limite de 100 caracteres e o truncamento por code point (emoji).
+    - `videos.service.spec.ts`: 3 novos. `title` informado é persistido; ausente → derivado; `getOwnedDetail` inclui `title`.
+  - Integration:
+    - `video.entity.integration-spec.ts`: 2 novos. Inserir sem `title` → `23502`; 100 caracteres persistem e 101 → `22001`.
+    - `migrations.integration-spec.ts`: reestruturado com 3 testes novos para a `AddVideoTitle`:
+      - a coluna fica `varchar(100) NOT NULL`;
+      - o `down` remove só `title`, mantendo as outras colunas, a linha, os índices e o enum;
+      - backfill verificado contra **linhas reais inseridas com SQL antes do `up()`**: `clip.final.mp4` → `clip.final`, `  Minhas férias.mp4 ` → `Minhas férias`, `.mp4` → `.mp4`, ` .mp4` → `.mp4`, nome de 255 caracteres → 100.
+    - `videos.service.integration-spec.ts`: o rascunho persistido tem o `title` derivado (`clip`).
+  - E2E:
+    - `videos-initiate-upload.e2e-spec.ts`: novo grupo 4 com 5 cenários. Cobrem título informado (shape do 201 inalterado), trim, derivado (`clip.final`, 255 → 100), ` .mp4` → `.mp4`, `.mp4` → 415 e inválidos (`""`, `"   "`, 101) → 400 sem criar linha.
+    - `videos-get-owned.e2e-spec.ts`: a resposta inclui `title: "clip"`.
+
+  Regressão: 317 unit/integration (41 suítes) e 96 e2e (10 suítes) passando. `tsc --noEmit` limpo. `npm run lint` com 0 erros e os 23 warnings pré-existentes. `npm run build` ok. Nenhum `eslint-disable`. `npm run migration:run` → `No migrations are pending`.
 - **Origem da mudança:** a revisão final contra o enunciado do desafio do MBA encontrou uma lacuna na seção "Persistência". O enunciado exige que a entidade de vídeos tenha "pelo menos identificação, dono (canal), título, status, chaves de storage do arquivo e do thumbnail, duração e metadados, e o identificador da URL única". O Data Model da fase não tinha título, só `original_filename`. O `docs/project-plan.md` só trata da edição de título, na Fase 04.
 - **Plano atualizado** em `phase-03-videos.md`:
   - **Data Model:** coluna `title varchar(100) NOT NULL`.
@@ -317,6 +333,16 @@
   - **Validation Rules:** regra do título.
   - Novo SI-03.15, com Dependency Map e Deliverables.
 - **Migration:** nova `AddVideoTitle`, com backfill a partir de `original_filename` pela mesma regra do título derivado. O `down` remove apenas a coluna `title`. A `CreateVideos` já aplicada não é alterada.
+- **Observations:**
+  - **`deriveVideoTitle` em `src/videos/video-title.util.ts`.** Usa a mesma expressão (`/\.[^.]+$/`) que o SQL da migration, em vez de `path.parse`, para a regra ser literalmente a mesma nos dois lados. O SQL e o JS foram comparados no Postgres do Compose em 6 nomes, com resultados idênticos.
+  - **Limites do título em `VIDEO_TITLE` (`videos.constants.ts`)**, usados pelo DTO e pelo util.
+  - **`@Transform` do `class-transformer@0.5.1`**, conferido no context7 (versão da doc igual à instalada). Primeiro uso no projeto. O trim roda antes da validação graças ao `transform: true` do `ValidationPipe` global.
+  - **OpenAPI: os DTOs de request saem com `properties: {}` no `openapi.json` exportado.** Isso já acontecia antes deste SI. O `openapi:export` roda via `ts-node`, sem o plugin do `@nestjs/swagger`.
+    - O `@ApiProperty` foi declarado nos 4 campos do `InitiateUploadDto`, não só no `title`, para o schema do corpo não ficar parcial e enganar quem lê.
+    - `size_bytes` foi documentado como `integer`.
+    - Os demais DTOs de request (`PresignPartsDto`, `CompleteUploadDto` e os da Fase 02) continuam vazios no arquivo exportado. Fica como follow-up.
+  - **Os specs `videos-initiate-upload.plan.md` e `videos-get-owned.plan.md`** ganharam os cenários do título, e o `si:` do frontmatter lista também o SI-03.15.
+  - **Os testes de integração compartilham o banco `streamtube` do dev, com `synchronize: true`.** Na primeira rodada das suítes do SI, as integrações de `VideoProcessor` e `VideosService` falharam, e na segunda passaram. Causa provável, não reproduzida: o banco ainda não tinha a `AddVideoTitle` e guardava linhas de `videos`. O `synchronize` não consegue criar `title NOT NULL` numa tabela não vazia, até a suíte de migrations recriar o schema e reaplicar as 4 migrations. Quem tiver um banco com vídeos deve rodar `npm run migration:run` antes dos testes. O compartilhamento do banco entre testes e dev já existia e fica fora do escopo.
 
 ## Fechamento — revisão `/simplify` da Fase 03
 - **Status:** completed

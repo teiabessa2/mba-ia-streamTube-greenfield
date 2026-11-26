@@ -76,6 +76,7 @@ describe('VideoProcessor (integration: Postgres + MinIO + FFmpeg)', () => {
       public_id: generatePublicId(),
       channel_id: channel.id,
       status: VideoStatus.PROCESSING,
+      title: 'clip',
       original_filename: 'clip.mp4',
       content_type: 'video/mp4',
       size_bytes: body?.length ?? 1024,

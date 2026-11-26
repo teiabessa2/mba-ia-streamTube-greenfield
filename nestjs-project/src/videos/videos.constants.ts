@@ -22,6 +22,12 @@ export const VIDEO_FORMAT_ALLOWLIST = {
   EXTENSIONS: ['.mp4', '.mov', '.webm', '.mkv'],
 } as const;
 
+/** Video title limits (MBA challenge statement, "Persistência"; SI-03.15). */
+export const VIDEO_TITLE = {
+  MIN_LENGTH: 1,
+  MAX_LENGTH: 100,
+} as const;
+
 export const PUBLIC_ID_MAX_ATTEMPTS = 5;
 
 export const videoStorageKeys = {

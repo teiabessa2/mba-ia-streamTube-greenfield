@@ -1049,7 +1049,36 @@
       },
       "InitiateUploadDto": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "example": "Minhas férias",
+            "description": "Trimmed before validation. When absent: file_name without its last extension, trimmed (the trimmed file_name if that is empty), capped at 100 characters"
+          },
+          "file_name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "example": "clip.mp4"
+          },
+          "content_type": {
+            "type": "string",
+            "example": "video/mp4"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10737418240,
+            "example": 134217728
+          }
+        },
+        "required": [
+          "file_name",
+          "content_type",
+          "size_bytes"
+        ]
       },
       "InitiateUploadResponseDto": {
         "type": "object",
@@ -1268,6 +1297,10 @@
             ],
             "example": "ready"
           },
+          "title": {
+            "type": "string",
+            "example": "Minhas férias"
+          },
           "original_filename": {
             "type": "string",
             "example": "clip.mp4"
@@ -1317,6 +1350,7 @@
           "id",
           "public_id",
           "status",
+          "title",
           "original_filename",
           "content_type",
           "size_bytes",

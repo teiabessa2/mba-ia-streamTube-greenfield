@@ -198,4 +198,91 @@ describe('videos-initiate-upload', () => {
     expect(res.status).toBe(401);
     expect(await countVideos()).toBe(before);
   });
+
+  // 4. Título do vídeo (SI-03.15)
+
+  const VALID_BODY = {
+    file_name: 'clip.mp4',
+    content_type: 'video/mp4',
+    size_bytes: 1048576,
+  };
+
+  /** Creates a draft and returns the title read back by GET /videos/:id. */
+  async function titleOfCreatedDraft(
+    body: Record<string, unknown>,
+  ): Promise<string> {
+    const created = await initiate(body);
+    expect(created.status).toBe(201);
+    const { id } = created.body as InitiateUploadBody;
+    await trackDraft(id);
+
+    const detail = await request(app.getHttpServer())
+      .get(`/videos/${id}`)
+      .set('Authorization', `Bearer ${accessToken}`);
+    expect(detail.status).toBe(200);
+    return (detail.body as { title: string }).title;
+  }
+
+  it('titulo-informado-e-devolvido-no-detalhe', async () => {
+    const created = await initiate({ ...VALID_BODY, title: 'Minhas férias' });
+
+    expect(created.status).toBe(201);
+    expect(Object.keys(created.body as object).sort()).toEqual([
+      'id',
+      'part_count',
+      'part_size',
+      'public_id',
+      'status',
+    ]);
+    const { id } = created.body as InitiateUploadBody;
+    await trackDraft(id);
+    const detail = await request(app.getHttpServer())
+      .get(`/videos/${id}`)
+      .set('Authorization', `Bearer ${accessToken}`);
+    expect(detail.body).toMatchObject({ title: 'Minhas férias' });
+  });
+
+  it('titulo-com-espacos-nas-pontas-e-gravado-sem-eles', async () => {
+    await expect(
+      titleOfCreatedDraft({ ...VALID_BODY, title: '  Minhas férias  ' }),
+    ).resolves.toBe('Minhas férias');
+  });
+
+  it('titulo-derivado-do-file-name', async () => {
+    await expect(
+      titleOfCreatedDraft({ ...VALID_BODY, file_name: 'clip.final.mp4' }),
+    ).resolves.toBe('clip.final');
+    await expect(
+      titleOfCreatedDraft({
+        ...VALID_BODY,
+        file_name: `${'a'.repeat(251)}.mp4`,
+      }),
+    ).resolves.toBe('a'.repeat(100));
+  });
+
+  it('titulo-derivado-quando-o-nome-fica-vazio', async () => {
+    await expect(
+      titleOfCreatedDraft({ ...VALID_BODY, file_name: ' .mp4' }),
+    ).resolves.toBe('.mp4');
+
+    const before = await countVideos();
+    const noExtension = await initiate({ ...VALID_BODY, file_name: '.mp4' });
+    expect(noExtension.status).toBe(415);
+    expect(noExtension.body).toMatchObject({
+      error: 'UNSUPPORTED_VIDEO_FORMAT',
+    });
+    expect(await countVideos()).toBe(before);
+  });
+
+  it('rejeita-titulo-invalido', async () => {
+    const before = await countVideos();
+
+    for (const title of ['', '   ', 'a'.repeat(101)]) {
+      const res = await initiate({ ...VALID_BODY, title });
+
+      expect(res.status).toBe(400);
+      expect(res.body).toMatchObject({ error: 'VALIDATION_ERROR' });
+    }
+    expect(await countVideos()).toBe(before);
+  });
 });

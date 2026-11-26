@@ -34,6 +34,9 @@ export class Video {
   @Column({ type: 'uuid' })
   channel_id: string;
 
+  @Column({ type: 'varchar', length: 100 })
+  title: string;
+
   @Column({
     type: 'enum',
     enum: VideoStatus,

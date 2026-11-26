@@ -40,6 +40,9 @@ export class VideoResponseDto {
   @ApiProperty({ enum: VideoStatus, example: VideoStatus.READY })
   status: VideoStatus;
 
+  @ApiProperty({ example: 'Minhas férias' })
+  title: string;
+
   @ApiProperty({ example: 'clip.mp4' })
   original_filename: string;
 
@@ -77,6 +80,7 @@ export class VideoResponseDto {
       id: video.id,
       public_id: video.public_id,
       status: video.status,
+      title: video.title,
       original_filename: video.original_filename,
       content_type: video.content_type,
       size_bytes: video.size_bytes,

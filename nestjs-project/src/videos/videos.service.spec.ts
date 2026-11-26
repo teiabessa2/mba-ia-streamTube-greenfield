@@ -175,6 +175,25 @@ describe('VideosService.initiateUpload', () => {
       );
     });
 
+    it('should persist the informed title', async () => {
+      await service.initiateUpload(USER_ID, dto({ title: 'Minhas férias' }));
+
+      expect(repo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'Minhas férias' }),
+      );
+    });
+
+    it('should derive the title from file_name when it is absent', async () => {
+      await service.initiateUpload(
+        USER_ID,
+        dto({ file_name: 'clip.final.mp4' }),
+      );
+
+      expect(repo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'clip.final' }),
+      );
+    });
+
     it('should retry with a new public_id when the first one collides', async () => {
       jest
         .spyOn(publicIdUtil, 'generatePublicId')
@@ -281,6 +300,24 @@ describe('VideosService.findOwnedDraft / presignParts', () => {
         ).rejects.toBeInstanceOf(VideoNotInDraftException);
       },
     );
+  });
+
+  describe('getOwnedDetail', () => {
+    it('should include the title in the owner view', async () => {
+      const now = new Date();
+      repo.findOne.mockResolvedValueOnce(
+        draft({
+          title: 'Minhas férias',
+          thumbnail_key: null,
+          created_at: now,
+          updated_at: now,
+        }),
+      );
+
+      const detail = await service.getOwnedDetail(USER_ID, 'video-1');
+
+      expect(detail.title).toBe('Minhas férias');
+    });
   });
 
   describe('presignParts', () => {
