@@ -164,7 +164,21 @@
     - O vídeo e o usuário `worker-check-*@example.com` dessa verificação ficaram no banco e no bucket de dev.
   - **`UsersModule` importado pelo `WorkerModule`.** É uma divergência do plano, que só cita `forFeature([Video])`. O `autoLoadEntities` precisa dos metadados de `Channel` e `User` (relação `Video → Channel → User`), senão o `DataSource` não inicializa. Importar o módulo dono registra essas entidades sem o worker declarar entidades de outros domínios.
   - **Configuração duplicada.** O `ConfigModule.forRoot` e o `TypeOrmModule.forRootAsync` do `WorkerModule` repetem os do `AppModule`. O plano pede o mesmo `load`/`validationSchema`. Extrair as opções para um arquivo compartilhado exige alterar o `AppModule`, fora do escopo do SI, e fica como follow-up.
-  - **`dist/` compartilhado.** `video-worker` e `nestjs-api` montam o mesmo volume, e `nest start --watch` (com `deleteOutDir: true`) compila nos dois para o mesmo `dist/`. Na verificação, os dois processos subiram e funcionaram juntos. Mesmo assim, um restart de um apaga o `dist/` enquanto o outro observa. Um `outDir` separado para o worker fica como follow-up, caso apareça instabilidade.
+  - **`outDir` próprio do worker (`dist-worker/`), resolvido no commit `fix(worker): build worker to its own outDir`.**
+    - **Problema:** `video-worker` e `nestjs-api` montam o mesmo volume. No commit do SI, `nest start --watch`, com `deleteOutDir: true`, compilava os dois para o mesmo `dist/`, e o restart de um apagava os arquivos do outro.
+    - **Solução, seguindo o padrão nest-cli/tsconfig:**
+      - Novo `tsconfig.worker.json`, que estende o `tsconfig.build.json` e só troca o `outDir` para `./dist-worker`. O `.tsbuildinfo` vai junto, em `dist-worker/tsconfig.worker.tsbuildinfo`.
+      - `start:worker:dev` passou a ser `nest start --watch --path tsconfig.worker.json --entryFile worker.main`. O `nest start --path` tira desse tsconfig o `outDir` usado pelo `deleteOutDir`, pela cópia de assets e pelo caminho do entrypoint.
+      - `/dist-worker` foi adicionado ao `.gitignore`.
+    - **`exclude` necessário:** o `tsconfig.build.json` excluía só `dist`. Sem isso, a recompilação incremental do worker lia os `.d.ts` de `dist-worker/` como entrada e falhava com 89× `TS5055 … would overwrite input file`. O build da API também passaria a incluí-los, o que mudaria o `rootDir` e o caminho `dist/main`. Então `dist-worker` entrou no `exclude` do `tsconfig.build.json`, herdado pelo `tsconfig.worker.json`. Também entrou no `tsconfig.json`, que antes não tinha `exclude` e agora repete o padrão (`node_modules`, `dist`) mais `dist-worker`.
+    - **Produção inalterada:** `start:worker` continua `node dist/worker.main`. Lá não há watch, e um único `npm run build` gera os dois entrypoints em `dist/`, como o plano define.
+    - **Verificação com os dois processos rodando juntos:**
+      - O worker roda de `dist-worker/worker.main`, e a recompilação incremental (edição temporária de um fonte, depois desfeita) saiu com 0 erros.
+      - **Restart da API com o worker no ar:** `dist/main.js` foi recriado (inode 226471 → 226473). `dist-worker/worker.main.js` ficou com o mesmo inode e o mesmo mtime. O worker seguiu no mesmo PID, sem recompilar nem reiniciar, e processou um vídeo real até `ready` (`60d7b463-…`).
+      - **Restart do worker com a API no ar:** o worker recompilou o `dist-worker/` e trocou de PID (60 → 32). `dist/main.js` ficou intacto, a API seguiu no mesmo PID, respondendo 200, sem recompilar. Outro vídeo real chegou a `ready` (`7dc61c02-…`).
+      - O `start:dev` foi parado ao fim.
+    - **Regressão após a correção:** `tsc --noEmit` limpo. `npm run lint` com 0 erros e os 23 warnings pré-existentes. `npm run build` ok, com `dist/main.js` e `dist/worker.main.js` e sem `dist-worker` dentro de `dist/`. 262 unit/integration (38 suítes) e 76 e2e (7 suítes) passando.
+    - Os vídeos e usuários `worker-check-*@example.com` dessas verificações ficaram no banco e no bucket de dev.
   - **Atualização condicional.** O `update` para `ready` usa `{ id, status: processing }`, para nunca sobrescrever um vídeo que saiu de `processing` durante o processamento.
   - **Arquivos fora da lista do plano.**
     - `worker.constants.ts`, com a posição do frame a 10%, o content-type e os nomes temporários.
