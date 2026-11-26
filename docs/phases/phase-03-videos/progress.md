@@ -345,3 +345,10 @@
   - **Literais `67108864` nos testes.** Ficam como estão: aparecem em expectativas e fixam o valor normativo da TD-03 sem depender da constante.
   - **Setup e cleanup repetidos nas suítes e2e de vídeo** (`abortOpenUploads`, criação de rascunho, `putPart`, `getPlayback`, `QueueEvents`) e **cleanup serial** com `for…await`. Ficam como task separada de consolidação dos helpers de teste.
   - **`VIDEO_FORMAT_ALLOWLIST` com casts `as readonly string[]`.** Mantido, porque a convenção do projeto pede `as const` nas constantes.
+- **Ajuste pré-existente: `.env.example` sem `APP_URL` e `SWAGGER_ENABLED`.**
+  - **Como apareceu:** na DoD com o ambiente reconstruído (`docker compose up -d --build --force-recreate`, sem apagar volumes), a comparação entre o `.env.example` e o schema Joi (`src/config/env.validation.ts`) mostrou que as duas chaves faltavam.
+  - **Origem:** a falta é anterior à Fase 03. As duas chaves já não estavam no `.env.example` da `dev`.
+  - **Impacto:** as duas são opcionais e têm padrão no Joi, então o projeto subia mesmo sem elas.
+  - **Correção:** as duas chaves entraram no `.env.example` com os mesmos valores padrão do schema, `APP_URL=http://localhost:3000` e `SWAGGER_ENABLED=false`, para não mudar comportamento. Um comentário indica que `SWAGGER_ENABLED=true` habilita a documentação em `/api/docs`.
+  - **Verificação:** o `.env.example` inteiro, lido pelo `dotenv`, valida no `envValidationSchema`, com as 29 chaves do schema presentes.
+  - Commit separado: `chore: document optional APP_URL and SWAGGER_ENABLED in .env.example`.
