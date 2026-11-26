@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
-**Status:** completed
-**SIs:** 14/14 completed
+**Status:** in progress
+**SIs:** 14/15 completed
 
 ### SI-03.1 — Infra: Redis, MinIO, FFmpeg e bibliotecas da fase
 - **Status:** completed
@@ -306,6 +306,17 @@
   - **Limpeza.** O `afterEach` aborta multiparts abertos e apaga o original e o thumbnail de cada vídeo no bucket `streamtube-test`.
   - O log `ERROR [VideoProcessor] … final: true` durante a suíte é esperado: é a falha final do cenário de arquivo inválido.
   - **Arquivos além dos listados no plano:** `padToBytes` em `src/test/media-fixtures.ts`.
+
+### SI-03.15 — Título do vídeo
+- **Status:** pending
+- **Origem da mudança:** a revisão final contra o enunciado do desafio do MBA encontrou uma lacuna na seção "Persistência". O enunciado exige que a entidade de vídeos tenha "pelo menos identificação, dono (canal), título, status, chaves de storage do arquivo e do thumbnail, duração e metadados, e o identificador da URL única". O Data Model da fase não tinha título, só `original_filename`. O `docs/project-plan.md` só trata da edição de título, na Fase 04.
+- **Plano atualizado** em `phase-03-videos.md`:
+  - **Data Model:** coluna `title varchar(100) NOT NULL`.
+  - **API Contracts:** `title` opcional no `POST /videos`, com trim e 1–100 caracteres (só espaços → 400), e presente na resposta do `GET /videos/:id`.
+  - **Título derivado** quando o campo está ausente (`deriveVideoTitle`): remove a última extensão do `file_name` e aplica trim; se ficar vazio (ex.: `.mp4`), usa o `file_name` original com trim; limita a 100 caracteres.
+  - **Validation Rules:** regra do título.
+  - Novo SI-03.15, com Dependency Map e Deliverables.
+- **Migration:** nova `AddVideoTitle`, com backfill a partir de `original_filename` pela mesma regra do título derivado. O `down` remove apenas a coluna `title`. A `CreateVideos` já aplicada não é alterada.
 
 ## Fechamento — revisão `/simplify` da Fase 03
 - **Status:** completed

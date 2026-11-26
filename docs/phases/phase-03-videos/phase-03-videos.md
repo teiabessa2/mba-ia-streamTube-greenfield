@@ -477,6 +477,80 @@ Entregar o upload de vídeos de até 10GB direto ao object storage com pré-cada
 
 ---
 
+### SI-03.15 — Título do vídeo
+
+**Route:** POST /videos · GET /videos/:id
+**Test Specs:** see `nestjs-project/specs/videos-initiate-upload.plan.md` e `nestjs-project/specs/videos-get-owned.plan.md`
+**Authorization:** inalterada — per `### Authorization Matrix`
+
+**Description:** Acrescenta o título do vídeo, exigido pelo enunciado do desafio do MBA, seção "Persistência": a entidade de vídeos deve ter "pelo menos identificação, dono (canal), título, status, chaves de storage do arquivo e do thumbnail, duração e metadados, e o identificador da URL única". O `docs/project-plan.md` só trata da **edição** do título, na Fase 04. Nesta fase o título é definido no início do upload (opcional, com valor derivado do nome do arquivo) e devolvido no detalhe do vídeo.
+
+**Technical actions:**
+
+1. Criar `src/videos/video-title.util.ts` com `deriveVideoTitle(fileName)`. É a regra única do título derivado, aplicada em ordem:
+   1. Remove a última extensão com a expressão `/\.[^.]+$/`.
+   2. Aplica trim (espaços em branco das pontas).
+   3. Se o resultado ficar vazio, usa o `file_name` original com trim. Exemplos: `.mp4` → `.mp4`; ` .mp4` → `.mp4`.
+   4. Limita o resultado a 100 caracteres, contados por caractere (code point), como o `varchar(100)` do Postgres.
+
+   O limite de 100 é consequência do `varchar(100)`, porque `file_name` aceita até 255 caracteres. O resultado nunca fica vazio, porque `file_name` tem pelo menos 1 caractere que não é espaço depois da validação do DTO e da allowlist.
+2. Criar a migration `src/database/migrations/{timestamp}-AddVideoTitle.ts`. A `CreateVideos` já foi aplicada e não é alterada.
+   - O `up` adiciona `title varchar(100)` como nullable.
+   - Em seguida preenche as linhas existentes com **exatamente a mesma regra** do `deriveVideoTitle`, escrita em SQL:
+     ```sql
+     UPDATE "videos" SET "title" = left(
+       coalesce(
+         nullif(regexp_replace(regexp_replace("original_filename", '\.[^.]+$', ''), '^\s+|\s+$', '', 'g'), ''),
+         regexp_replace("original_filename", '^\s+|\s+$', '', 'g')
+       ),
+       100
+     )
+     ```
+   - Por fim aplica `ALTER COLUMN "title" SET NOT NULL`.
+   - O `down` **apenas** remove a coluna: `ALTER TABLE "videos" DROP COLUMN "title"`. Nenhuma outra coluna, índice ou enum é tocado, e a `CreateVideos` continua como está (`synchronize: false` herdado da Fase 01).
+3. Adicionar `title` (`varchar(100)`, not null) à entidade `Video` em `src/videos/entities/video.entity.ts`, conforme `### Data Model → Video`.
+4. Adicionar `title?: string` a `src/videos/dto/initiate-upload.dto.ts`.
+   - Decoradores: `@IsOptional()`, `@Transform(({ value }) => typeof value === 'string' ? value.trim() : value)`, `@IsString()` e `@Length(1, 100)`.
+   - O trim roda antes da validação, porque o `ValidationPipe` global usa `transform: true`. Assim, um `title` só com espaços vira `""` e é rejeitado com 400 `VALIDATION_ERROR`.
+   - Documentar o campo no `@ApiProperty` como opcional.
+5. Em `VideosService.initiateUpload`, persistir o `dto.title` já com trim e, na ausência do campo, `deriveVideoTitle(dto.file_name)`.
+6. Adicionar `title: string` a `src/videos/dto/video-response.dto.ts`, mapeado em `VideoResponseDto.from`, conforme `### API Contracts → GET /videos/:id`.
+7. Regenerar o `openapi.json` commitado com `npm run openapi:export` (per `openapi-docs-nestjs/TD-02`).
+8. Atualizar os cenários de `nestjs-project/specs/videos-initiate-upload.plan.md` e `nestjs-project/specs/videos-get-owned.plan.md` com o título.
+9. Incluir `title` nas fixtures que inserem `Video` direto no banco, para atender ao `NOT NULL`. Isso vale para os specs de integração da entidade, do `VideosService` e do `VideoProcessor`, e para os mocks tipados do `videos.service.spec.ts`.
+
+**Tests:**
+
+| Artifact | Layer | Test file |
+|----------|-------|-----------|
+| `deriveVideoTitle` | Unit: `clip.final.mp4` → `clip.final`; `  Minhas férias.mp4 ` → `Minhas férias`; `.mp4` → `.mp4`; ` .mp4` → `.mp4`; nome de 255 caracteres → 100 caracteres; truncamento por code point (não parte emoji) | `src/videos/video-title.util.spec.ts` |
+| `VideosService.initiateUpload` | Unit: `title` informado é persistido; ausente → `deriveVideoTitle(file_name)` (mock repo + mock `StorageService`) | `src/videos/videos.service.spec.ts` |
+| `VideoResponseDto.from` / `getOwnedDetail` | Unit: a resposta inclui `title` | `src/videos/videos.service.spec.ts` |
+| `Video` | Integration: inserir sem `title` falha com violação de `NOT NULL`; `title` de 100 caracteres persiste | `src/videos/entities/video.entity.integration-spec.ts` |
+| `AddVideoTitle` migration | Integration: o `up` preenche `title` das linhas existentes com a mesma regra do `deriveVideoTitle` (`clip.final.mp4` → `clip.final`; `.mp4` → `.mp4`; ` .mp4` → `.mp4`; nome de 255 caracteres → 100) e deixa a coluna `NOT NULL`; o `down` remove só a coluna `title`, mantendo as demais colunas e as linhas | `src/database/migrations.integration-spec.ts` |
+| `VideosService.initiateUpload` | Integration (Postgres + MinIO reais): rascunho persistido com o `title` derivado quando ausente | `src/videos/videos.service.integration-spec.ts` |
+| `POST /videos` | E2E: com `title` → `GET /videos/:id` devolve o mesmo `title`; `title` com espaços nas pontas → gravado sem eles; sem `title` → título derivado de `file_name`; `file_name: " .mp4"` sem `title` → `.mp4`; `title` vazio, só com espaços ou com 101 caracteres após o trim → 400 `VALIDATION_ERROR` sem criar linha | `test/videos-initiate-upload.e2e-spec.ts` |
+| `GET /videos/:id` | E2E: a resposta inclui `title` | `test/videos-get-owned.e2e-spec.ts` |
+
+**Dependencies:** SI-03.4 — entidade `Video` e migration `CreateVideos`; SI-03.5 — `POST /videos`; SI-03.12 — `GET /videos/:id`; SI-03.13 — `openapi.json` já cobre todas as rotas da fase
+
+**Acceptance criteria:**
+
+- `npm run migration:run` aplica `AddVideoTitle` sobre um banco com `CreateVideos` já aplicada. As linhas existentes recebem o `title` pela mesma regra do `deriveVideoTitle`: `original_filename = "clip.final.mp4"` → `"clip.final"` e `original_filename = ".mp4"` → `".mp4"`.
+- Depois da migration, a coluna `videos.title` é `varchar(100) NOT NULL`.
+- `npm run migration:revert` desfaz a `AddVideoTitle` removendo **apenas** a coluna `title`: as demais colunas, índices, o enum `video_status` e as linhas de `videos` continuam como estavam.
+- `POST /videos` com `{ title: "Minhas férias", file_name: "clip.mp4", content_type: "video/mp4", size_bytes: 134217728 }` retorna `201`, e o `GET /videos/:id` desse rascunho devolve `title: "Minhas férias"`.
+- `POST /videos` com `title: "  Minhas férias  "` grava e devolve `title: "Minhas férias"`.
+- `POST /videos` com `title: ""`, com `title: "   "` (só espaços) ou com `title` de 101 caracteres após o trim retorna `400` com `error: "VALIDATION_ERROR"`, e nenhuma linha é criada em `videos`.
+- `POST /videos` sem `title` e com `file_name: "clip.final.mp4"` cria o rascunho com `title: "clip.final"`.
+- `POST /videos` sem `title` e com `file_name: " .mp4"` (o nome sem extensão fica vazio após o trim) cria o rascunho com `title: ".mp4"`, o `file_name` original com trim.
+- `deriveVideoTitle(".mp4")` retorna `".mp4"`. Pelo `POST /videos`, `file_name: ".mp4"` continua sendo rejeitado com 415 pela allowlist, porque não tem extensão.
+- `POST /videos` sem `title` e com `file_name` de 255 caracteres cria o rascunho com `title` de 100 caracteres.
+- O shape de resposta do `POST /videos` (201) não muda.
+- `openapi.json` documenta `title` como opcional no corpo do `POST /videos` e como obrigatório na resposta do `GET /videos/:id`.
+
+---
+
 ## Technical Specifications
 
 ### Data Model
@@ -490,6 +564,7 @@ Tabela `videos` (nova). Colunas em snake_case, seguindo a convenção das entida
 | id | uuid | PK, generated |
 | public_id | varchar(16) | unique, not null — ID aleatório curto gerado com `node:crypto` (base64url, 8 bytes → 11 caracteres) na criação do rascunho; colisão em UNIQUE → nova tentativa (per `phase-03-videos/TD-07`) |
 | channel_id | uuid | not null, FK → `channels.id` — canal do usuário autenticado que iniciou o upload (dono) |
+| title | varchar(100) | not null — título do vídeo; informado no `POST /videos` (com trim) ou derivado do `file_name` por `deriveVideoTitle` (per enunciado do desafio do MBA, seção "Persistência"; SI-03.15). A edição do título fica para a Fase 04 (`docs/project-plan.md`) |
 | status | enum `video_status` (`draft`, `processing`, `ready`, `failed`) | not null, default `draft` (per `phase-03-videos/TD-09`) |
 | original_filename | varchar(255) | not null — nome do arquivo declarado no início do upload |
 | content_type | varchar(100) | not null — MIME declarado, já validado contra a allowlist (per `phase-03-videos/TD-11`) |
@@ -508,7 +583,7 @@ Tabela `videos` (nova). Colunas em snake_case, seguindo a convenção das entida
 **Relations:** `Channel` has many `Video` (one-to-many; `Video.channel_id` → `Channel.id`). O dono do vídeo é o `User` dono do `Channel` (`channels.user_id`).
 **Indexes:** unique on `public_id`; index on `channel_id`.
 **Transições de status (per `phase-03-videos/TD-09`, `phase-03-videos/TD-10`):** `draft → processing` (no `complete` do upload, pela API) · `processing → ready` (worker, após metadados + thumbnail gravados) · `processing → failed` (handler de falha final do worker: `UnrecoverableError` ou tentativas esgotadas). Nenhuma outra transição existe nesta fase. Rascunho abortado é **removido** (linha apagada), não ganha estado próprio (per `phase-03-videos/TD-12`). Rascunho cujo objeto final diverge de `size_bytes` no `complete` (`UPLOAD_SIZE_MISMATCH`) recebe o mesmo destino: objeto e linha apagados, sem passar por `processing` nem `failed` (per `phase-03-videos/TD-03`, `phase-03-videos/TD-12`).
-**Migration:** nova migration TypeORM cria o enum `video_status`, a tabela `videos`, o índice único em `public_id`, o índice em `channel_id` e a FK para `channels` (`synchronize: false` herdado da Fase 01).
+**Migration:** nova migration TypeORM cria o enum `video_status`, a tabela `videos`, o índice único em `public_id`, o índice em `channel_id` e a FK para `channels` (`synchronize: false` herdado da Fase 01). A coluna `title` entra depois, numa migration própria (`AddVideoTitle`, SI-03.15), porque a `CreateVideos` já foi aplicada. Ela preenche as linhas existentes a partir de `original_filename`, com a mesma regra do título derivado, antes de aplicar `NOT NULL`. O `down` remove apenas a coluna `title`.
 
 ### API Contracts
 
@@ -523,6 +598,7 @@ Inicia o upload: valida o arquivo declarado, cria o rascunho (`status = draft`) 
 - Authorization: Bearer <access_token>
 
 **Request body:**
+- title: string, optional — espaços das pontas removidos (trim); depois disso, 1 a 100 caracteres. Se ausente, é derivado do `file_name`: sem a última extensão e com trim; se ficar vazio, o `file_name` original com trim; limitado a 100 caracteres (per enunciado do desafio do MBA, seção "Persistência"; SI-03.15)
 - file_name: string, required — 1 a 255 caracteres; a extensão precisa estar na allowlist
 - content_type: string, required — precisa estar na allowlist
 - size_bytes: integer, required — `1 ≤ size_bytes ≤ 10737418240`
@@ -535,7 +611,7 @@ Inicia o upload: valida o arquivo declarado, cria o rascunho (`status = draft`) 
 - part_count: integer — `ceil(size_bytes / part_size)`
 
 **Error responses:**
-- 400 VALIDATION_ERROR: corpo fora do schema (campo ausente, tipo errado, `size_bytes < 1`)
+- 400 VALIDATION_ERROR: corpo fora do schema (campo ausente, tipo errado, `size_bytes < 1`, `title` vazio, só com espaços ou com mais de 100 caracteres após o trim)
 - 401 Unauthorized: sem token ou token inválido (guard global)
 - 413 VIDEO_TOO_LARGE: `size_bytes > 10737418240`; nenhum rascunho é criado (per `phase-03-videos/TD-03` revisão 2026-11-23)
 - 415 UNSUPPORTED_VIDEO_FORMAT: `content_type` ou extensão de `file_name` fora da allowlist; nenhum rascunho é criado (per `phase-03-videos/TD-11`)
@@ -642,6 +718,7 @@ Consulta o status e o detalhe do próprio vídeo. Exige login e ser dono do cana
 - id: string (uuid)
 - public_id: string
 - status: `"draft"` | `"processing"` | `"ready"` | `"failed"`
+- title: string (SI-03.15)
 - original_filename: string
 - content_type: string
 - size_bytes: integer
@@ -690,6 +767,7 @@ Público (`@Public()`). Igual ao stream, mas a URL pré-assinada leva `ResponseC
 - `:id` (rotas do dono): UUID, validado com `ParseUUIDPipe` → 400 `VALIDATION_ERROR`.
 - `:publicId` (rotas públicas): string; formato inválido não gera 400 — responde 404 `VIDEO_NOT_FOUND`, como o `publicId` inexistente.
 - **Allowlist de formatos** (per `phase-03-videos/TD-11`, primeira camada; valores _sugestão — sem origem normativa_): `content_type` ∈ {`video/mp4`, `video/quicktime`, `video/webm`, `video/x-matroska`} **e** extensão de `file_name` ∈ {`.mp4`, `.mov`, `.webm`, `.mkv`} (comparação sem diferenciar maiúsculas). A allowlist só barra o erro honesto; a validação real é o `ffprobe` no worker (segunda camada). Arquivo ilegível → `failed`.
+- **Título** (per enunciado do desafio do MBA, seção "Persistência"; SI-03.15): `title` opcional no `POST /videos`. O valor recebe trim e, depois disso, precisa ter de 1 a 100 caracteres; fora disso (inclusive só espaços) → 400 `VALIDATION_ERROR`. Se ausente, vale `deriveVideoTitle(file_name)`: remove a última extensão (`\.[^.]+$`) e aplica trim; se ficar vazio, usa o `file_name` original com trim; limita a 100 caracteres. A migration `AddVideoTitle` usa a mesma regra para as linhas existentes.
 - **Tamanho máximo:** `10737418240` bytes (10 × 1024³). Acima disso a API responde 413 `VIDEO_TOO_LARGE` sem criar rascunho.
 - **Partes:** `part_size = 67108864`. `part_number` é inteiro de 1 a 10.000 e nunca maior que o `part_count` do vídeo. O lote de URLs aceita até 100 partes por chamada (_sugestão — sem origem normativa_).
 - **Expiração das URLs pré-assinadas** (_sugestão — sem origem normativa_): partes de upload `3600`s (per `phase-03-videos/TD-03`); stream, download e thumbnail `3600`s; leitura interna do worker `900`s (padrão do presigner, per `phase-03-videos/TD-06`).
@@ -771,6 +849,7 @@ SI-03.1 (root)
         └── SI-03.9 — depends on SI-03.1 + SI-03.3 (FFmpeg na imagem + URLs internas)
 SI-03.4 (root, independent — só entidades da Fase 02)
 SI-03.14 — depends on SI-03.8 + SI-03.11 + SI-03.13 (abort, caminho failed, stream/download)
+SI-03.15 — depends on SI-03.4 + SI-03.5 + SI-03.12 + SI-03.13 (entidade/migration, POST /videos, GET /videos/:id, openapi.json completo)
 ```
 
 ---
@@ -791,6 +870,7 @@ SI-03.14 — depends on SI-03.8 + SI-03.11 + SI-03.13 (abort, caminho failed, st
 - [ ] SI-03.12 — Endpoint GET /videos/:id (status e detalhe do próprio vídeo)
 - [ ] SI-03.13 — Endpoints públicos de streaming e download (302 pré-assinado)
 - [ ] SI-03.14 — Fluxo completo upload → processamento → streaming (E2E com worker real)
+- [ ] SI-03.15 — Título do vídeo
 
 **Full test suites:**
 
