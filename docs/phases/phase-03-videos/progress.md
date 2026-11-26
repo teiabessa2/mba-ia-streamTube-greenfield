@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 9/14 completed
+**SIs:** 10/14 completed
 
 ### SI-03.1 — Infra: Redis, MinIO, FFmpeg e bibliotecas da fase
 - **Status:** completed
@@ -138,9 +138,37 @@
   - **Arquivos além dos listados no plano:** `media.constants.ts`, `media.errors.ts` e `media.types.ts`.
 
 ### SI-03.10 — Video Worker: processor, WorkerModule e entrypoint próprio
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 15 passing:
+  - `video.processor.spec.ts`: 9 unit.
+    - No-op para vídeo ausente e para `draft`/`ready`/`failed`, sem chamar storage nem media.
+    - Caminho feliz: URL interna com 900s, frame a 10% da duração e uma única atualização condicional para `ready`.
+    - Remoção do diretório temporário.
+    - `InvalidMediaError` → `UnrecoverableError`.
+    - Erro transitório de probe e de frame relançado como está.
+  - `video.processor.integration-spec.ts`: 5 testes com Postgres, MinIO e FFmpeg reais.
+    - Vídeo `ready` com duração, metadados e thumbnail `image/jpeg` no bucket.
+    - Reentrega do job mantém os mesmos valores e um único objeto de thumbnail.
+    - Vídeo fora de `processing` fica intacto.
+    - Vídeo inexistente termina sem erro.
+    - Objeto que não é vídeo → `UnrecoverableError`, com a linha ainda em `processing`.
+  - `worker.module.spec.ts`: 1 teste de compilação, que também verifica a relação `Video#channel` resolvida.
+
+  Regressão: 262 unit/integration (38 suítes) e 76 e2e (7 suítes) passando, com e2e repetido já com o `video-worker` no ar. `tsc --noEmit` limpo. `npm run lint` com 0 erros e os 23 warnings pré-existentes.
+- **Observations:**
+  - **ACs do Compose verificados manualmente.**
+    - `docker compose up -d video-worker` sobe o container, que loga `Video worker started`.
+    - Fluxo real pelo host: cadastro, token pelo Mailpit, login, `POST /videos`, PUT da parte na URL pública e `complete`. O vídeo `6807ca4e-…` chegou a `ready` em ~1s, com `duration_seconds = 3`, `metadata` e `thumbnail_key`. O thumbnail responde 403 a GET anônimo.
+    - Com API (`start:dev`) e worker no ar, `Queue.getWorkers()` da fila `videos` lista 1 worker, com o IP do `video-worker`. Nenhum log do `VideoProcessor` aparece na API.
+    - O `start:dev` foi parado ao fim da verificação.
+    - O vídeo e o usuário `worker-check-*@example.com` dessa verificação ficaram no banco e no bucket de dev.
+  - **`UsersModule` importado pelo `WorkerModule`.** É uma divergência do plano, que só cita `forFeature([Video])`. O `autoLoadEntities` precisa dos metadados de `Channel` e `User` (relação `Video → Channel → User`), senão o `DataSource` não inicializa. Importar o módulo dono registra essas entidades sem o worker declarar entidades de outros domínios.
+  - **Configuração duplicada.** O `ConfigModule.forRoot` e o `TypeOrmModule.forRootAsync` do `WorkerModule` repetem os do `AppModule`. O plano pede o mesmo `load`/`validationSchema`. Extrair as opções para um arquivo compartilhado exige alterar o `AppModule`, fora do escopo do SI, e fica como follow-up.
+  - **`dist/` compartilhado.** `video-worker` e `nestjs-api` montam o mesmo volume, e `nest start --watch` (com `deleteOutDir: true`) compila nos dois para o mesmo `dist/`. Na verificação, os dois processos subiram e funcionaram juntos. Mesmo assim, um restart de um apaga o `dist/` enquanto o outro observa. Um `outDir` separado para o worker fica como follow-up, caso apareça instabilidade.
+  - **Atualização condicional.** O `update` para `ready` usa `{ id, status: processing }`, para nunca sobrescrever um vídeo que saiu de `processing` durante o processamento.
+  - **Arquivos fora da lista do plano.**
+    - `worker.constants.ts`, com a posição do frame a 10%, o content-type e os nomes temporários.
+    - `videoStorageKeys.thumbnail` em `videos.constants.ts`, ao lado de `original`.
 
 ### SI-03.11 — Handler de falha final do processamento (retry + `failed`)
 - **Status:** pending

@@ -26,6 +26,7 @@ export const PUBLIC_ID_MAX_ATTEMPTS = 5;
 
 export const videoStorageKeys = {
   original: (videoId: string) => `videos/${videoId}/original`,
+  thumbnail: (videoId: string) => `videos/${videoId}/thumbnail.jpg`,
 } as const;
 
 /** `process-video` job on the `videos` queue (phase-03-videos/TD-10). */

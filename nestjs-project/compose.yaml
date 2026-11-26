@@ -19,6 +19,24 @@ services:
       minio:
         condition: service_started
 
+  # Consumer of the `videos` queue: same image/code as the API, own entrypoint
+  # (phase-03-videos/TD-04).
+  video-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    command: npm run start:worker:dev
+    volumes:
+      - .:/home/node/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      # No healthcheck available (see nestjs-api); StorageModule waits on boot.
+      minio:
+        condition: service_started
+
   db:
     image: postgres:17
     ports:
